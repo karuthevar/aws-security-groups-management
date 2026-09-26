@@ -81,7 +81,7 @@ while [[ $# -gt 0 ]]; do
             AUDIT_FILE="$2"
             shift 2
             ;;
-        -r|--role-name)
+        -r|--role|--role-name)
             ROLE_NAME="$2"
             shift 2
             ;;
@@ -89,7 +89,7 @@ while [[ $# -gt 0 ]]; do
             SPECIFIC_ACCOUNTS="$2"
             shift 2
             ;;
-        -g|--regions)
+        -g|--region|--regions)
             SPECIFIC_REGIONS="$2"
             shift 2
             ;;

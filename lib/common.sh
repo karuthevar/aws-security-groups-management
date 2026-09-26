@@ -217,6 +217,61 @@ get_organization_accounts() {
     echo "${org_accounts}" | jq '[.[] | {Id: .[0], Name: .[1], Email: .[2]}]'
 }
 
+# --- AWS Performance & Fast-Fail Configurations ---
+export AWS_MAX_ATTEMPTS="${AWS_MAX_ATTEMPTS:-1}"
+export AWS_RETRY_MODE="${AWS_RETRY_MODE:-standard}"
+
+# --- Filter Regions by Accessibility (Fast Parallel Probe) ---
+filter_accessible_regions() {
+    local candidate_json="$1"
+    
+    local cand_list
+    cand_list=($(echo "${candidate_json}" | jq -r '.[]' 2>/dev/null))
+    if [[ "${#cand_list[@]}" -le 1 ]]; then
+        echo "${candidate_json}"
+        return 0
+    fi
+
+    # Create temporary directory for fast parallel probe
+    local probe_tmp
+    probe_tmp=$(mktemp -d 2>/dev/null || mktemp -d -t 'sg_probe')
+    local pids=()
+
+    for r in "${cand_list[@]}"; do
+        (
+            # Lightweight probe with 1 attempt to fail fast on disabled/SCP-blocked regions
+            if AWS_MAX_ATTEMPTS=1 aws ec2 describe-security-groups --region "${r}" --max-items 1 --output text >/dev/null 2>&1; then
+                echo "${r}" > "${probe_tmp}/${r}.ok"
+            fi
+        ) &
+        pids+=($!)
+    done
+
+    # Wait for all parallel probes to complete
+    for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null
+    done
+
+    local ok_regions=()
+    for f in "${probe_tmp}"/*.ok; do
+        if [[ -f "$f" ]]; then
+            ok_regions+=("$(basename "$f" .ok)")
+        fi
+    done
+    rm -rf "${probe_tmp}"
+
+    if [[ "${#ok_regions[@]}" -gt 0 ]]; then
+        local disabled_count=$(( ${#cand_list[@]} - ${#ok_regions[@]} ))
+        if [[ "$disabled_count" -gt 0 ]]; then
+            log_info "Detected ${disabled_count} disabled or SCP-restricted region(s). Auto-skipping them to save time."
+        fi
+        printf '%s\n' "${ok_regions[@]}" | jq -R . | jq -s .
+    else
+        # If all probe attempts failed or offline, return original candidate list
+        echo "${candidate_json}"
+    fi
+}
+
 # --- Get Enabled Regions for an Account ---
 get_account_regions() {
     local specific_regions="$1" # Optional comma-separated list of regions
@@ -235,15 +290,17 @@ get_account_regions() {
     fi
 
     local regions
+    # Query only opted-in or opt-in-not-required regions
     regions=$(aws ec2 describe-regions \
+        --filters "Name=opt-in-status,Values=opt-in-not-required,opted-in" \
         --query 'Regions[].RegionName' \
         --output json 2>/dev/null)
 
     if [[ $? -ne 0 ]] || [[ -z "${regions}" ]] || [[ "${regions}" == "null" ]]; then
         # Default fallback to common regions if API fails
-        echo '["us-east-1", "us-east-2", "us-west-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-southeast-1"]'
-        return 0
+        regions='["us-east-1", "us-east-2", "us-west-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-southeast-1"]'
     fi
 
-    echo "${regions}"
+    # Probe and filter out any regions where the account has no access (e.g. SCP region restriction)
+    filter_accessible_regions "${regions}"
 }
