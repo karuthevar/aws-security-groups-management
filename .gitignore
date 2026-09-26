@@ -1,0 +1,36 @@
+# AWS Security Group Management .gitignore
+
+# Environment & Credentials
+config.env
+.env
+*.pem
+*.key
+
+# Reports and Output data
+reports/
+*.html
+*.json
+!test/*.json
+!templates/*.html
+
+# Backups (contain actual infrastructure SG JSON snapshots)
+backups/
+*.bak
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Logs
+logs/
+*.log
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

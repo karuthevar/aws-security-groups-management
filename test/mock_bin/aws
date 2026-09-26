@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Mock AWS CLI for unit testing
+
+CMD="$1"
+SUB="$2"
+
+if [[ "$CMD" == "sts" && "$SUB" == "get-caller-identity" ]]; then
+    echo '{"Account": "111122223333", "Arn": "arn:aws:iam::111122223333:root", "UserId": "AIDA111122223333"}'
+    exit 0
+fi
+
+if [[ "$CMD" == "organizations" && "$SUB" == "list-accounts" ]]; then
+    echo '[["111122223333", "Production-Root", "root@example.com"], ["222233334444", "Workloads-Staging", "staging@example.com"]]'
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "describe-regions" ]]; then
+    echo '["us-east-1", "us-west-2"]'
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "describe-security-groups" ]]; then
+    # Check if filtering for default SG
+    if [[ "$*" == *"group-name,Values=default"* ]]; then
+        if [[ "$*" == *"--query"* ]]; then
+            echo "sg-04444444444444444"
+            exit 0
+        fi
+        cat "$(dirname "$0")/../mock_sgs.json" | python -c "
+import sys, json
+sgs = json.load(sys.stdin).get('SecurityGroups', [])
+default_sg = [x for x in sgs if x.get('GroupName') == 'default']
+print(json.dumps({'SecurityGroups': default_sg}))
+"
+        exit 0
+    fi
+
+    # Check if querying specific group ID
+    if [[ "$*" == *"--group-ids"* ]]; then
+        TARGET_ID=$(echo "$*" | sed -n 's/.*--group-ids \([^ ]*\).*/\1/p')
+        cat "$(dirname "$0")/../mock_sgs.json" | python -c "
+import sys, json
+sgs = json.load(sys.stdin).get('SecurityGroups', [])
+matched = [x for x in sgs if x.get('GroupId') == '${TARGET_ID}']
+if not matched:
+    matched = [{'GroupId': '${TARGET_ID}', 'GroupName': 'default', 'IpPermissions': [{'IpProtocol': '-1'}]}]
+print(json.dumps({'SecurityGroups': matched}))
+"
+        exit 0
+    fi
+
+    # Return all mock SGs
+    cat "$(dirname "$0")/../mock_sgs.json"
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "describe-network-interfaces" ]]; then
+    # Check if querying for specific group-id
+    if [[ "$*" == *"--filters"* ]]; then
+        # Group filter check
+        if [[ "$*" == *"sg-01111111111111111"* || "$*" == *"sg-02222222222222222"* || "$*" == *"sg-05555555555555555"* || "$*" == *"sg-06666666666666666"* ]]; then
+            echo "1"
+        else
+            echo "0"
+        fi
+        exit 0
+    fi
+    cat "$(dirname "$0")/../mock_enis.json"
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "revoke-security-group-ingress" ]]; then
+    echo "Revoked security group ingress rules successfully (mock)"
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "delete-security-group" ]]; then
+    echo "Deleted security group successfully (mock)"
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "create-security-group" ]]; then
+    echo "sg-09999999999999999"
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && "$SUB" == "describe-vpcs" ]]; then
+    echo '{"Vpcs": [{"VpcId": "vpc-0123456789abcdef0"}]}'
+    exit 0
+fi
+
+if [[ "$CMD" == "ec2" && ("$SUB" == "authorize-security-group-ingress" || "$SUB" == "authorize-security-group-egress" || "$SUB" == "create-tags") ]]; then
+    exit 0
+fi
+
+echo "Mock AWS CLI: Unhandled command: $*"
+exit 0

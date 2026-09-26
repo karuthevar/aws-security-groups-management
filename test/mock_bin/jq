@@ -1,0 +1,133 @@
+#!/usr/bin/env python
+import sys, json, re
+
+def main():
+    args = sys.argv[1:]
+    raw_mode = False
+    compact_mode = False
+    slurp_mode = False
+    arg_vars = {}
+    query = ""
+    files = []
+
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "-r":
+            raw_mode = True
+        elif a == "-c":
+            compact_mode = True
+        elif a == "-s":
+            slurp_mode = True
+        elif a == "--arg":
+            arg_vars[args[i+1]] = args[i+2]
+            i += 2
+        elif a == "--argjson":
+            arg_vars[args[i+1]] = json.loads(args[i+2])
+            i += 2
+        elif not query and not a.startswith("-"):
+            query = a
+        elif not a.startswith("-"):
+            files.append(a)
+        i += 1
+
+    input_text = ""
+    if files:
+        with open(files[0], "r", encoding="utf-8") as f:
+            input_text = f.read()
+    else:
+        input_text = sys.stdin.read()
+
+    if not input_text.strip():
+        return
+
+    data = None
+    if slurp_mode:
+        data = [json.loads(input_text)]
+    else:
+        try:
+            data = json.loads(input_text)
+        except Exception:
+            return
+
+    # Handle standard queries
+    if query in (". | length", "length"):
+        print(len(data) if isinstance(data, (list, dict)) else 0)
+        return
+
+    if query in (".SecurityGroups | length", ".SecurityGroup.IpPermissions | length", ".SecurityGroup.IpPermissionsEgress | length", ".SecurityGroup.Tags | length"):
+        parts = [p for p in query.replace(" | length", "").split(".") if p]
+        curr = data
+        for p in parts:
+            if isinstance(curr, dict):
+                curr = curr.get(p)
+            else:
+                curr = []
+        print(len(curr) if isinstance(curr, list) else 0)
+        return
+
+    if query in (".[]", ".[]?"):
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    print(json.dumps(item))
+                else:
+                    print(item)
+        return
+
+    if query == ".[].BackupFile":
+        if isinstance(data, list):
+            for item in data:
+                bf = item.get("BackupFile", "")
+                if bf:
+                    print(bf)
+        return
+
+    if query == ".SecurityGroups[0]":
+        sgs = data.get("SecurityGroups", [])
+        if sgs:
+            print(json.dumps(sgs[0]))
+        return
+
+    # Array append with argjson: . + [$entry]
+    if query == ". + [$entry]":
+        entry = arg_vars.get("entry")
+        if isinstance(data, list) and entry is not None:
+            data.append(entry)
+            print(json.dumps(data, indent=2))
+            return
+
+    # Slurp merge: '.[0] + .[1]'
+    if query == ".[0] + .[1]":
+        if isinstance(data, list) and len(data) >= 2:
+            res = data[0] + data[1]
+            print(json.dumps(res, indent=2))
+            return
+
+    # Filtering candidates
+    if "CAN_DELETE" in query:
+        res = [x for x in data if x.get("Recommendation") == "CAN_DELETE" or (x.get("IsAttached") is False and x.get("IsDefault") is False)]
+        print(json.dumps(res, indent=2))
+        return
+
+    # Dot-path navigation (e.g. .BackupMetadata.AccountId or .AccountId)
+    if query.startswith(".") and not query.startswith(".["):
+        parts = [p for p in query.split(".") if p]
+        curr = data
+        for p in parts:
+            if isinstance(curr, dict):
+                curr = curr.get(p)
+            else:
+                curr = None
+                break
+        if raw_mode:
+            print(curr if curr is not None and not isinstance(curr, (dict, list)) else ("" if curr is None else json.dumps(curr)))
+        else:
+            print(json.dumps(curr) if curr is not None else "null")
+        return
+
+    # Default dump
+    print(json.dumps(data, indent=2))
+
+if __name__ == "__main__":
+    main()

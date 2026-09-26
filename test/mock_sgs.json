@@ -1,0 +1,176 @@
+{
+  "SecurityGroups": [
+    {
+      "GroupId": "sg-01111111111111111",
+      "GroupName": "production-bastion-sg",
+      "Description": "Production Bastion Host with SSH open",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 22,
+          "ToPort": 22,
+          "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "Global SSH Access - DANGEROUS"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "Tags": [{"Key": "Environment", "Value": "Production"}, {"Key": "Name", "Value": "bastion"}]
+    },
+    {
+      "GroupId": "sg-02222222222222222",
+      "GroupName": "db-aurora-exposed-sg",
+      "Description": "Aurora Database SG mistakenly opened to internet",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 3306,
+          "ToPort": 3306,
+          "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "Public MySQL access"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "IpPermissionsEgress": [],
+      "Tags": [{"Key": "Environment", "Value": "Production"}, {"Key": "Tier", "Value": "Database"}]
+    },
+    {
+      "GroupId": "sg-03333333333333333",
+      "GroupName": "abandoned-open-all-sg",
+      "Description": "Old developer security group with all traffic open",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "All traffic open"}],
+          "Ipv6Ranges": [{"CidrIpv6": "::/0", "Description": "All IPv6 open"}],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "Tags": [{"Key": "Environment", "Value": "DevTest"}]
+    },
+    {
+      "GroupId": "sg-04444444444444444",
+      "GroupName": "default",
+      "Description": "default VPC security group",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": [{"GroupId": "sg-04444444444444444"}]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "Tags": []
+    },
+    {
+      "GroupId": "sg-05555555555555555",
+      "GroupName": "alb-internet-facing-sg",
+      "Description": "Public Application Load Balancer SG",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "Public HTTP"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "Public HTTPS"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "Tags": [{"Key": "Service", "Value": "WebGateway"}]
+    },
+    {
+      "GroupId": "sg-06666666666666666",
+      "GroupName": "internal-microservice-sg",
+      "Description": "Internal service restricted to private subnet RFC 1918",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 8080,
+          "ToPort": 8080,
+          "IpRanges": [{"CidrIp": "10.0.0.0/8", "Description": "Internal VPC Only"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "Tags": [{"Key": "App", "Value": "Billing"}]
+    },
+    {
+      "GroupId": "sg-07777777777777777",
+      "GroupName": "stale-poc-unattached-sg",
+      "Description": "Stale Proof of Concept SG from last year",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 9000,
+          "ToPort": 9000,
+          "IpRanges": [{"CidrIp": "192.168.1.0/24", "Description": "Old office IP"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": [],
+          "UserIdGroupPairs": []
+        }
+      ],
+      "Tags": [{"Key": "Owner", "Value": "JohnDoe"}]
+    }
+  ]
+}

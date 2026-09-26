@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Organization Security Group Audit Report</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #38bdf8;
+            --accent-blue-hover: #0284c7;
+            --danger-bg: #450a0a;
+            --danger-text: #f87171;
+            --danger-border: #991b1b;
+            --warning-bg: #451a03;
+            --warning-text: #fb923c;
+            --warning-border: #9a3412;
+            --success-bg: #052e16;
+            --success-text: #4ade80;
+            --success-border: #166534;
+            --purple-bg: #3b0764;
+            --purple-text: #c084fc;
+            --purple-border: #6b21a8;
+            --neutral-bg: #1e293b;
+            --neutral-text: #cbd5e1;
+            --neutral-border: #475569;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 24px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header-title h1 {
+            font-size: 26px;
+            font-weight: 700;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .btn {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            border-color: var(--accent-blue);
+            background-color: #273548;
+        }
+
+        .btn-primary {
+            background-color: #0284c7;
+            border-color: #0284c7;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #0369a1;
+            border-color: #0369a1;
+        }
+
+        /* Metric Cards */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-blue);
+        }
+
+        .metric-card.active {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        }
+
+        .metric-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .metric-subtext {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .metric-card.danger { border-left: 4px solid var(--danger-text); }
+        .metric-card.danger .metric-value { color: var(--danger-text); }
+
+        .metric-card.warning { border-left: 4px solid var(--warning-text); }
+        .metric-card.warning .metric-value { color: var(--warning-text); }
+
+        .metric-card.success { border-left: 4px solid var(--success-text); }
+        .metric-card.success .metric-value { color: var(--success-text); }
+
+        .metric-card.purple { border-left: 4px solid var(--purple-text); }
+        .metric-card.purple .metric-value { color: var(--purple-text); }
+
+        .metric-card.blue { border-left: 4px solid var(--accent-blue); }
+        .metric-card.blue .metric-value { color: var(--accent-blue); }
+
+        /* Filter Toolbar */
+        .toolbar {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 2;
+            min-width: 250px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 9px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .filters-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 140px;
+        }
+
+        .filter-group label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .filter-group select {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .quick-presets {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+        }
+
+        .preset-badge {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .preset-badge:hover, .preset-badge.active {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.1);
+        }
+
+        /* Results Table */
+        .table-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background-color: #172033;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+
+        tr:hover td {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+
+        .badge-critical { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+        .badge-high { background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+        .badge-medium { background: #3b2a05; color: #fde047; border: 1px solid #854d0e; }
+        .badge-low { background: #0c2d3a; color: #7dd3fc; border: 1px solid #0369a1; }
+        .badge-clean { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+
+        .badge-delete { background: var(--success-bg); color: #86efac; border: 1px solid var(--success-border); }
+        .badge-restrict { background: var(--danger-bg); color: #fca5a5; border: 1px solid var(--danger-border); }
+        .badge-review { background: var(--warning-bg); color: #fdba74; border: 1px solid var(--warning-border); }
+        .badge-default { background: var(--purple-bg); color: #d8b4fe; border: 1px solid var(--purple-border); }
+        .badge-safe { background: #132e2b; color: #5eead4; border: 1px solid #115e59; }
+
+        .sg-name {
+            font-weight: 600;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sg-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        .sg-id:hover {
+            text-decoration: underline;
+        }
+
+        .sg-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .threat-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-width: 320px;
+        }
+
+        .threat-item {
+            font-size: 11px;
+            padding: 3px 6px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.2);
+            border-left: 3px solid transparent;
+        }
+
+        .threat-item.crit { border-left-color: var(--danger-text); color: #fca5a5; }
+        .threat-item.high { border-left-color: var(--warning-text); color: #fdba74; }
+        .threat-item.med { border-left-color: #fde047; color: #fef08a; }
+
+        /* Expandable detail row */
+        .detail-row {
+            display: none;
+            background-color: #131b2e;
+        }
+
+        .detail-row.expanded {
+            display: table-row;
+        }
+
+        .detail-content {
+            padding: 16px 20px;
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        .detail-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 12px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        .rules-table {
+            width: 100%;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .rules-table th {
+            padding: 6px 10px;
+            background: #0f172a;
+        }
+
+        .rules-table td {
+            padding: 8px 10px;
+        }
+
+        .rule-exposed {
+            background: rgba(239, 68, 68, 0.08);
+            font-weight: 500;
+        }
+
+        /* Status Bar / Footer */
+        .footer-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Modal for JSON details */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 100%;
+            max-width: 800px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-body pre {
+            background: #0b1120;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #38bdf8;
+            overflow-x: auto;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .code-pill {
+            font-family: monospace;
+            font-size: 11px;
+            background: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <div class="header-title">
+            <h1>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                AWS Organization Security Group Audit
+            </h1>
+            <p id="scan-metadata">Generated across Organization Accounts &bull; Threat & Attachment Security Review</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn" onclick="exportToCSV()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Export CSV
+            </button>
+            <button class="btn btn-primary" onclick="exportDeletionList()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Export Cleanup List
+            </button>
+        </div>
+    </div>
+
+    <!-- Executive Metrics -->
+    <div class="metrics-grid">
+        <div class="metric-card blue" onclick="setPresetFilter('all')">
+            <div class="metric-title">Total Security Groups</div>
+            <div class="metric-value" id="metric-total">0</div>
+            <div class="metric-subtext" id="metric-scope-text">Scanning accounts...</div>
+        </div>
+        <div class="metric-card danger" onclick="setPresetFilter('critical')">
+            <div class="metric-title">Critical Threats</div>
+            <div class="metric-value" id="metric-critical">0</div>
+            <div class="metric-subtext">SSH / RDP / DB open to 0.0.0.0/0</div>
+        </div>
+        <div class="metric-card warning" onclick="setPresetFilter('high')">
+            <div class="metric-title">High Threats</div>
+            <div class="metric-value" id="metric-high">0</div>
+            <div class="metric-subtext">K8s / APIs / Wide Ranges open</div>
+        </div>
+        <div class="metric-card warning" onclick="setPresetFilter('exposed')">
+            <div class="metric-title">Internet Exposed</div>
+            <div class="metric-value" id="metric-exposed">0</div>
+            <div class="metric-subtext">Has 0.0.0.0/0 or ::/0 ingress</div>
+        </div>
+        <div class="metric-card success" onclick="setPresetFilter('candelete')">
+            <div class="metric-title">Can Be Deleted</div>
+            <div class="metric-value" id="metric-can-delete">0</div>
+            <div class="metric-subtext">Unattached (0 ENIs) &amp; non-default</div>
+        </div>
+        <div class="metric-card purple" onclick="setPresetFilter('default')">
+            <div class="metric-title">Default SGs</div>
+            <div class="metric-value" id="metric-default">0</div>
+            <div class="metric-subtext">Restrict inbound/outbound rules</div>
+        </div>
+    </div>
+
+    <!-- Toolbar: Search & Filters -->
+    <div class="toolbar">
+        <div class="search-row">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search by SG ID, Name, VPC, Port, Threat, or Account..." onkeyup="applyFilters()">
+            </div>
+        </div>
+        <div class="filters-row">
+            <div class="filter-group">
+                <label>Account</label>
+                <select id="accountFilter" onchange="applyFilters()">
+                    <option value="">All Accounts</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Region</label>
+                <select id="regionFilter" onchange="applyFilters()">
+                    <option value="">All Regions</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Recommendation</label>
+                <select id="recFilter" onchange="applyFilters()">
+                    <option value="">All Recommendations</option>
+                    <option value="CAN_DELETE">Can Be Deleted (Unattached)</option>
+                    <option value="RESTRICT_IMMEDIATELY">Restrict Immediately (Threats)</option>
+                    <option value="REVIEW_EXPOSURE">Review Public Exposure</option>
+                    <option value="DEFAULT_RESTRICT">Default SG (Restrict)</option>
+                    <option value="SAFE_IN_USE">Safe In Use</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Severity</label>
+                <select id="sevFilter" onchange="applyFilters()">
+                    <option value="">All Severities</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                    <option value="CLEAN">Clean</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Attachment</label>
+                <select id="attachFilter" onchange="applyFilters()">
+                    <option value="">All</option>
+                    <option value="attached">Attached (>0 ENIs)</option>
+                    <option value="unattached">Unattached (0 ENIs)</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Internet Exposure</label>
+                <select id="exposureFilter" onchange="applyFilters()">
+                    <option value="">All</option>
+                    <option value="exposed">Exposed (0.0.0.0/0)</option>
+                    <option value="internal">Internal Only</option>
+                </select>
+            </div>
+        </div>
+        <div class="quick-presets">
+            <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Quick Filters:</span>
+            <span class="preset-badge active" id="preset-all" onclick="setPresetFilter('all')">All SGs</span>
+            <span class="preset-badge" id="preset-critical" onclick="setPresetFilter('critical')">🚨 Critical &amp; High</span>
+            <span class="preset-badge" id="preset-candelete" onclick="setPresetFilter('candelete')">🗑️ Safe to Delete</span>
+            <span class="preset-badge" id="preset-exposed" onclick="setPresetFilter('exposed')">🌐 Internet Exposed</span>
+            <span class="preset-badge" id="preset-default" onclick="setPresetFilter('default')">🔒 Default SGs</span>
+            <span class="preset-badge" id="preset-attached" onclick="setPresetFilter('attached')">🔌 Active Resources</span>
+        </div>
+    </div>
+
+    <!-- Results Table -->
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Recommendation</th>
+                    <th>Severity</th>
+                    <th>Security Group</th>
+                    <th>Account</th>
+                    <th>Region</th>
+                    <th>Attached Resources</th>
+                    <th>Exposure</th>
+                    <th>Threats &amp; Findings</th>
+                    <th style="text-align: right;">Action</th>
+                </tr>
+            </thead>
+            <tbody id="sgTableBody">
+                <!-- Dynamically populated -->
+            </tbody>
+        </table>
+        <div id="emptyMessage" class="empty-state" style="display: none;">
+            No security groups match the selected filters.
+        </div>
+    </div>
+
+    <div class="footer-info">
+        <div id="footer-count">Showing 0 of 0 security groups</div>
+        <div>AWS Organization Security Group Compliance &bull; Automated Remediation Tool</div>
+    </div>
+
+    <!-- JSON Modal -->
+    <div id="jsonModal" class="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalTitle">Security Group Details</h3>
+                <button class="btn" onclick="closeModal()">Close</button>
+            </div>
+            <div class="modal-body">
+                <pre id="modalJsonContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data injected by audit_security_groups.sh
+        const RAW_DATA = /* __DATA_PAYLOAD__ */ [];
+        const METADATA = /* __METADATA_PAYLOAD__ */ {
+            scanDate: new Date().toISOString(),
+            accountCount: 0,
+            regionCount: 0,
+            totalSGs: 0
+        };
+
+        let currentFilteredData = [];
+
+        function initDashboard() {
+            // Update Scan Metadata
+            const metaEl = document.getElementById('scan-metadata');
+            if (metaEl && METADATA.scanDate) {
+                const dateStr = new Date(METADATA.scanDate).toLocaleString();
+                metaEl.innerHTML = `Audit Timestamp: <strong>${dateStr}</strong> &bull; Scanned: <strong>${METADATA.accountCount}</strong> Accounts &bull; <strong>${RAW_DATA.length}</strong> Security Groups`;
+            }
+
+            // Populate Filters Dropdowns
+            populateFilterDropdowns();
+
+            // Calculate Metrics
+            calculateMetrics();
+
+            // Render Table
+            applyFilters();
+        }
+
+        function calculateMetrics() {
+            let total = RAW_DATA.length;
+            let critical = 0;
+            let high = 0;
+            let exposed = 0;
+            let canDelete = 0;
+            let defaultSGs = 0;
+
+            RAW_DATA.forEach(sg => {
+                if (sg.MaxSeverity === 'CRITICAL') critical++;
+                if (sg.MaxSeverity === 'HIGH') high++;
+                if (sg.IsExposedToInternet) exposed++;
+                if (sg.Recommendation === 'CAN_DELETE') canDelete++;
+                if (sg.IsDefault) defaultSGs++;
+            });
+
+            document.getElementById('metric-total').innerText = total;
+            document.getElementById('metric-critical').innerText = critical;
+            document.getElementById('metric-high').innerText = high;
+            document.getElementById('metric-exposed').innerText = exposed;
+            document.getElementById('metric-can-delete').innerText = canDelete;
+            document.getElementById('metric-default').innerText = defaultSGs;
+            document.getElementById('metric-scope-text').innerText = `${METADATA.accountCount} Accounts, ${METADATA.regionCount} Regions`;
+        }
+
+        function populateFilterDropdowns() {
+            const accountSelect = document.getElementById('accountFilter');
+            const regionSelect = document.getElementById('regionFilter');
+
+            const accounts = new Map();
+            const regions = new Set();
+
+            RAW_DATA.forEach(sg => {
+                if (sg.AccountId) {
+                    accounts.set(sg.AccountId, sg.AccountName || sg.AccountId);
+                }
+                if (sg.Region) {
+                    regions.add(sg.Region);
+                }
+            });
+
+            accounts.forEach((name, id) => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = `${name} (${id})`;
+                accountSelect.appendChild(opt);
+            });
+
+            Array.from(regions).sort().forEach(reg => {
+                const opt = document.createElement('option');
+                opt.value = reg;
+                opt.textContent = reg;
+                regionSelect.appendChild(opt);
+            });
+        }
+
+        function setPresetFilter(preset) {
+            document.querySelectorAll('.preset-badge').forEach(b => b.classList.remove('active'));
+            const activeBadge = document.getElementById(`preset-${preset}`);
+            if (activeBadge) activeBadge.classList.add('active');
+
+            // Reset other filters
+            document.getElementById('recFilter').value = '';
+            document.getElementById('sevFilter').value = '';
+            document.getElementById('attachFilter').value = '';
+            document.getElementById('exposureFilter').value = '';
+
+            if (preset === 'critical') {
+                document.getElementById('sevFilter').value = 'CRITICAL';
+            } else if (preset === 'high') {
+                document.getElementById('sevFilter').value = 'HIGH';
+            } else if (preset === 'candelete') {
+                document.getElementById('recFilter').value = 'CAN_DELETE';
+            } else if (preset === 'exposed') {
+                document.getElementById('exposureFilter').value = 'exposed';
+            } else if (preset === 'default') {
+                document.getElementById('recFilter').value = 'DEFAULT_RESTRICT';
+            } else if (preset === 'attached') {
+                document.getElementById('attachFilter').value = 'attached';
+            }
+
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const query = (document.getElementById('searchInput').value || '').toLowerCase();
+            const account = document.getElementById('accountFilter').value;
+            const region = document.getElementById('regionFilter').value;
+            const rec = document.getElementById('recFilter').value;
+            const sev = document.getElementById('sevFilter').value;
+            const attach = document.getElementById('attachFilter').value;
+            const exposure = document.getElementById('exposureFilter').value;
+
+            currentFilteredData = RAW_DATA.filter(sg => {
+                // Search query
+                if (query) {
+                    const matchId = sg.GroupId.toLowerCase().includes(query);
+                    const matchName = (sg.GroupName || '').toLowerCase().includes(query);
+                    const matchVpc = (sg.VpcId || '').toLowerCase().includes(query);
+                    const matchAcc = (sg.AccountId || '').toLowerCase().includes(query) || (sg.AccountName || '').toLowerCase().includes(query);
+                    const matchThreat = (sg.Threats || []).some(t => t.message.toLowerCase().includes(query) || t.port_info.toLowerCase().includes(query));
+                    if (!matchId && !matchName && !matchVpc && !matchAcc && !matchThreat) return false;
+                }
+
+                // Account
+                if (account && sg.AccountId !== account) return false;
+
+                // Region
+                if (region && sg.Region !== region) return false;
+
+                // Recommendation
+                if (rec && sg.Recommendation !== rec) return false;
+
+                // Severity
+                if (sev && sg.MaxSeverity !== sev) return false;
+
+                // Attachment
+                if (attach === 'attached' && !sg.IsAttached) return false;
+                if (attach === 'unattached' && sg.IsAttached) return false;
+
+                // Exposure
+                if (exposure === 'exposed' && !sg.IsExposedToInternet) return false;
+                if (exposure === 'internal' && sg.IsExposedToInternet) return false;
+
+                return true;
+            });
+
+            renderTable();
+        }
+
+        function getSeverityBadge(sev) {
+            const s = (sev || 'CLEAN').toUpperCase();
+            switch (s) {
+                case 'CRITICAL': return '<span class="badge badge-critical">CRITICAL</span>';
+                case 'HIGH': return '<span class="badge badge-high">HIGH</span>';
+                case 'MEDIUM': return '<span class="badge badge-medium">MEDIUM</span>';
+                case 'LOW': return '<span class="badge badge-low">LOW</span>';
+                default: return '<span class="badge badge-clean">CLEAN</span>';
+            }
+        }
+
+        function getRecommendationBadge(rec) {
+            switch (rec) {
+                case 'CAN_DELETE': return '<span class="badge badge-delete">CAN DELETE</span>';
+                case 'RESTRICT_IMMEDIATELY': return '<span class="badge badge-restrict">RESTRICT NOW</span>';
+                case 'REVIEW_EXPOSURE': return '<span class="badge badge-review">REVIEW</span>';
+                case 'DEFAULT_RESTRICT': return '<span class="badge badge-default">DEFAULT SG</span>';
+                default: return '<span class="badge badge-safe">SAFE IN USE</span>';
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('sgTableBody');
+            const empty = document.getElementById('emptyMessage');
+            tbody.innerHTML = '';
+
+            if (currentFilteredData.length === 0) {
+                empty.style.display = 'block';
+                document.getElementById('footer-count').innerText = `Showing 0 of ${RAW_DATA.length} security groups`;
+                return;
+            }
+
+            empty.style.display = 'none';
+            document.getElementById('footer-count').innerText = `Showing ${currentFilteredData.length} of ${RAW_DATA.length} security groups`;
+
+            currentFilteredData.forEach((sg, index) => {
+                const tr = document.createElement('tr');
+                tr.id = `row-${index}`;
+
+                // Threats summary HTML
+                let threatHtml = '';
+                if (sg.Threats && sg.Threats.length > 0) {
+                    threatHtml = '<ul class="threat-list">';
+                    sg.Threats.slice(0, 3).forEach(t => {
+                        const cls = t.severity === 'CRITICAL' ? 'crit' : (t.severity === 'HIGH' ? 'high' : 'med');
+                        threatHtml += `<li class="threat-item ${cls}">${escapeHtml(t.message)}</li>`;
+                    });
+                    if (sg.Threats.length > 3) {
+                        threatHtml += `<li class="threat-item" style="color: var(--text-muted);">+ ${sg.Threats.length - 3} more threats...</li>`;
+                    }
+                    threatHtml += '</ul>';
+                } else if (sg.IsDefault) {
+                    threatHtml = '<span style="color: var(--purple-text); font-size: 11px;">Default VPC Security Group</span>';
+                } else if (!sg.IsAttached) {
+                    threatHtml = '<span style="color: var(--success-text); font-size: 11px;">No active ENIs. Zero traffic.</span>';
+                } else {
+                    threatHtml = '<span style="color: var(--text-muted); font-size: 11px;">Private/Internal traffic only.</span>';
+                }
+
+                // Attachment badge
+                let attachBadge = '';
+                if (sg.IsAttached) {
+                    attachBadge = `<span class="badge badge-low">${sg.AttachedResourcesCount} ENI(s) Active</span>`;
+                } else {
+                    attachBadge = `<span class="badge badge-delete">0 ENIs (Unattached)</span>`;
+                }
+
+                // Exposure badge
+                let exposureBadge = '';
+                if (sg.IsExposedToInternet) {
+                    exposureBadge = `<span class="badge badge-critical">0.0.0.0/0 Exposed</span>`;
+                } else {
+                    exposureBadge = `<span class="badge badge-clean">Internal Only</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td>${getRecommendationBadge(sg.Recommendation)}</td>
+                    <td>${getSeverityBadge(sg.MaxSeverity)}</td>
+                    <td>
+                        <div class="sg-name">
+                            <span>${escapeHtml(sg.GroupName)}</span>
+                            ${sg.IsDefault ? '<span class="badge badge-default">default</span>' : ''}
+                        </div>
+                        <div>
+                            <span class="sg-id" onclick="copyToClipboard('${sg.GroupId}')" title="Click to copy SG ID">${sg.GroupId}</span>
+                            <span class="code-pill">${escapeHtml(sg.VpcId || 'N/A')}</span>
+                        </div>
+                        <div class="sg-desc">${escapeHtml(sg.Description || '')}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 500;">${escapeHtml(sg.AccountName || sg.AccountId)}</div>
+                        <div class="code-pill" style="font-size: 10px;">${sg.AccountId}</div>
+                    </td>
+                    <td><span class="code-pill">${escapeHtml(sg.Region)}</span></td>
+                    <td>${attachBadge}</td>
+                    <td>${exposureBadge}</td>
+                    <td>${threatHtml}</td>
+                    <td style="text-align: right;">
+                        <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="toggleDetails(${index})">
+                            Details
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                // Add expandable detail row
+                const detailTr = document.createElement('tr');
+                detailTr.id = `detail-${index}`;
+                detailTr.className = 'detail-row';
+                detailTr.innerHTML = `
+                    <td colspan="9">
+                        <div class="detail-content">
+                            <div class="detail-tabs">
+                                <button class="tab-btn active" onclick="switchDetailTab(${index}, 'rules')">Inbound Rules (${sg.IngressRulesCount})</button>
+                                <button class="tab-btn" onclick="switchDetailTab(${index}, 'resources')">Attached Resources (${sg.AttachedResourcesCount})</button>
+                                <button class="tab-btn" onclick="switchDetailTab(${index}, 'tags')">Tags (${(sg.Tags || []).length})</button>
+                                <button class="tab-btn" onclick="showRawJson(${index})">Raw JSON</button>
+                            </div>
+                            <div id="tab-rules-${index}">
+                                ${renderRulesTable(sg)}
+                            </div>
+                            <div id="tab-resources-${index}" style="display: none;">
+                                ${renderResourcesTable(sg)}
+                            </div>
+                            <div id="tab-tags-${index}" style="display: none;">
+                                ${renderTagsTable(sg)}
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(detailTr);
+            });
+        }
+
+        function renderRulesTable(sg) {
+            if (!sg.IpPermissions || sg.IpPermissions.length === 0) {
+                return '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">No inbound rules configured.</div>';
+            }
+
+            let html = `
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th>Protocol</th>
+                            <th>Port Range</th>
+                            <th>Source</th>
+                            <th>Threat Assessment</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            sg.IpPermissions.forEach(rule => {
+                const proto = rule.IpProtocol === '-1' ? 'ALL' : (rule.IpProtocol || '').toUpperCase();
+                let port = 'ALL';
+                if (rule.FromPort !== undefined && rule.ToPort !== undefined) {
+                    port = rule.FromPort === rule.ToPort ? `${rule.FromPort}` : `${rule.FromPort} - ${rule.ToPort}`;
+                }
+
+                // Sources
+                const sources = [];
+                (rule.IpRanges || []).forEach(r => sources.push({ cidr: r.CidrIp, desc: r.Description || '' }));
+                (rule.Ipv6Ranges || []).forEach(r => sources.push({ cidr: r.CidrIpv6, desc: r.Description || '' }));
+                (rule.UserIdGroupPairs || []).forEach(g => sources.push({ cidr: g.GroupId, desc: g.Description || 'SG Reference' }));
+
+                sources.forEach(src => {
+                    const isExposed = src.cidr === '0.0.0.0/0' || src.cidr === '::/0';
+                    const trClass = isExposed ? 'rule-exposed' : '';
+                    let threatBadge = isExposed 
+                        ? '<span class="badge badge-critical">PUBLIC INTERNET</span>' 
+                        : '<span class="badge badge-clean">PRIVATE</span>';
+
+                    html += `
+                        <tr class="${trClass}">
+                            <td><span class="code-pill">${proto}</span></td>
+                            <td><strong>${port}</strong></td>
+                            <td><span class="code-pill">${escapeHtml(src.cidr)}</span></td>
+                            <td>${threatBadge}</td>
+                            <td style="color: var(--text-muted);">${escapeHtml(src.desc || '-')}</td>
+                        </tr>
+                    `;
+                });
+            });
+
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function renderResourcesTable(sg) {
+            if (!sg.AttachedResources || sg.AttachedResources.length === 0) {
+                return '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">No active network interfaces (ENIs) attached to this security group.</div>';
+            }
+
+            let html = `
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th>Interface ID (ENI)</th>
+                            <th>Resource Type</th>
+                            <th>Instance / Resource ID</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            sg.AttachedResources.forEach(res => {
+                html += `
+                    <tr>
+                        <td><span class="code-pill">${escapeHtml(res.NetworkInterfaceId)}</span></td>
+                        <td>${escapeHtml(res.InterfaceType || 'interface')}</td>
+                        <td><span class="code-pill">${escapeHtml(res.InstanceId || res.ResourceId || 'N/A')}</span></td>
+                        <td style="color: var(--text-secondary);">${escapeHtml(res.Description || '-')}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function renderTagsTable(sg) {
+            if (!sg.Tags || sg.Tags.length === 0) {
+                return '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">No tags found on this security group.</div>';
+            }
+
+            let html = '<div style="display: flex; gap: 8px; flex-wrap: wrap; padding: 8px;">';
+            sg.Tags.forEach(t => {
+                html += `<span class="code-pill"><strong>${escapeHtml(t.Key)}</strong>: ${escapeHtml(t.Value)}</span>`;
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function toggleDetails(index) {
+            const detailRow = document.getElementById(`detail-${index}`);
+            if (detailRow.classList.contains('expanded')) {
+                detailRow.classList.remove('expanded');
+            } else {
+                detailRow.classList.add('expanded');
+            }
+        }
+
+        function switchDetailTab(index, tab) {
+            const parent = document.getElementById(`detail-${index}`);
+            parent.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            document.getElementById(`tab-rules-${index}`).style.display = tab === 'rules' ? 'block' : 'none';
+            document.getElementById(`tab-resources-${index}`).style.display = tab === 'resources' ? 'block' : 'none';
+            document.getElementById(`tab-tags-${index}`).style.display = tab === 'tags' ? 'block' : 'none';
+        }
+
+        function showRawJson(index) {
+            const sg = currentFilteredData[index];
+            document.getElementById('modalTitle').innerText = `${sg.GroupId} (${sg.GroupName})`;
+            document.getElementById('modalJsonContent').innerText = JSON.stringify(sg, null, 2);
+            document.getElementById('jsonModal').classList.add('active');
+        }
+
+        function closeModal(event) {
+            document.getElementById('jsonModal').classList.remove('active');
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert(`Copied ${text} to clipboard!`);
+            });
+        }
+
+        function exportToCSV() {
+            if (currentFilteredData.length === 0) {
+                alert('No data to export.');
+                return;
+            }
+
+            const headers = [
+                'AccountId', 'AccountName', 'Region', 'GroupId', 'GroupName',
+                'VpcId', 'Recommendation', 'Severity', 'IsDefault', 'IsAttached',
+                'AttachedENICount', 'IsExposedToInternet', 'ThreatCount', 'ThreatSummary'
+            ];
+
+            const rows = currentFilteredData.map(sg => {
+                const threatSummary = (sg.Threats || []).map(t => t.message).join(' | ');
+                return [
+                    sg.AccountId,
+                    `"${(sg.AccountName || '').replace(/"/g, '""')}"`,
+                    sg.Region,
+                    sg.GroupId,
+                    `"${(sg.GroupName || '').replace(/"/g, '""')}"`,
+                    sg.VpcId,
+                    sg.Recommendation,
+                    sg.MaxSeverity,
+                    sg.IsDefault,
+                    sg.IsAttached,
+                    sg.AttachedResourcesCount,
+                    sg.IsExposedToInternet,
+                    sg.ThreatCount,
+                    `"${threatSummary.replace(/"/g, '""')}"`
+                ].join(',');
+            });
+
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `aws_security_group_audit_${new Date().toISOString().slice(0, 10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function exportDeletionList() {
+            const candidates = RAW_DATA.filter(sg => sg.Recommendation === 'CAN_DELETE');
+            if (candidates.length === 0) {
+                alert('No unattached deletion candidates found!');
+                return;
+            }
+
+            const lines = [
+                `# AWS Security Groups Recommended for Deletion (Unattached & Non-Default)`,
+                `# Total Candidates: ${candidates.length}`,
+                `# Run cleanup_security_groups.sh to safely back up and delete these groups.`,
+                `# Format: AccountId,Region,GroupId,GroupName,VpcId`,
+                ...candidates.map(sg => `${sg.AccountId},${sg.Region},${sg.GroupId},${sg.GroupName},${sg.VpcId}`)
+            ];
+
+            const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `unattached_security_groups_candidates_${new Date().toISOString().slice(0, 10)}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    </script>
+</body>
+</html>

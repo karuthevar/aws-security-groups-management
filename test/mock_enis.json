@@ -1,0 +1,68 @@
+{
+  "NetworkInterfaces": [
+    {
+      "NetworkInterfaceId": "eni-01111111111111111",
+      "InterfaceType": "interface",
+      "Description": "Primary network interface for bastion host",
+      "Attachment": {
+        "AttachmentId": "ela-attach-01111111",
+        "InstanceId": "i-01111111111111111",
+        "Status": "attached"
+      },
+      "Groups": [
+        {
+          "GroupId": "sg-01111111111111111",
+          "GroupName": "production-bastion-sg"
+        }
+      ]
+    },
+    {
+      "NetworkInterfaceId": "eni-02222222222222222",
+      "InterfaceType": "interface",
+      "Description": "RDS Network Interface for Aurora Cluster",
+      "Attachment": {
+        "AttachmentId": "ela-attach-02222222",
+        "InstanceId": "",
+        "Status": "attached"
+      },
+      "Groups": [
+        {
+          "GroupId": "sg-02222222222222222",
+          "GroupName": "db-aurora-exposed-sg"
+        }
+      ]
+    },
+    {
+      "NetworkInterfaceId": "eni-05555555555555555",
+      "InterfaceType": "application_load_balancer",
+      "Description": "ELB app/production-web-alb/9876543210",
+      "Attachment": {
+        "AttachmentId": "ela-attach-05555555",
+        "InstanceId": "",
+        "Status": "attached"
+      },
+      "Groups": [
+        {
+          "GroupId": "sg-05555555555555555",
+          "GroupName": "alb-internet-facing-sg"
+        }
+      ]
+    },
+    {
+      "NetworkInterfaceId": "eni-06666666666666666",
+      "InterfaceType": "interface",
+      "Description": "ECS Task interface for billing microservice",
+      "Attachment": {
+        "AttachmentId": "ela-attach-06666666",
+        "InstanceId": "",
+        "Status": "attached"
+      },
+      "Groups": [
+        {
+          "GroupId": "sg-06666666666666666",
+          "GroupName": "internal-microservice-sg"
+        }
+      ]
+    }
+  ]
+}
