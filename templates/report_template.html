@@ -590,6 +590,12 @@
             </div>
         </div>
         <div class="filters-row">
+            <div class="filter-group" id="orgFilterGroup" style="display: none;">
+                <label>Organization</label>
+                <select id="orgFilter" onchange="applyFilters()">
+                    <option value="">All Organizations</option>
+                </select>
+            </div>
             <div class="filter-group">
                 <label>Account</label>
                 <select id="accountFilter" onchange="applyFilters()">
@@ -754,13 +760,18 @@
         }
 
         function populateFilterDropdowns() {
+            const orgSelect = document.getElementById('orgFilter');
             const accountSelect = document.getElementById('accountFilter');
             const regionSelect = document.getElementById('regionFilter');
 
+            const orgs = new Set();
             const accounts = new Map();
             const regions = new Set();
 
             RAW_DATA.forEach(sg => {
+                if (sg.OrgRootAccountId) {
+                    orgs.add(sg.OrgRootAccountId);
+                }
                 if (sg.AccountId) {
                     accounts.set(sg.AccountId, sg.AccountName || sg.AccountId);
                 }
@@ -768,6 +779,17 @@
                     regions.add(sg.Region);
                 }
             });
+
+            if (orgs.size > 1 && orgSelect) {
+                document.getElementById('orgFilterGroup').style.display = 'flex';
+                orgSelect.innerHTML = `<option value="">All Organizations (${orgs.size} Orgs)</option>`;
+                Array.from(orgs).sort().forEach(org => {
+                    const opt = document.createElement('option');
+                    opt.value = org;
+                    opt.textContent = `Org: ${org}`;
+                    orgSelect.appendChild(opt);
+                });
+            }
 
             accounts.forEach((name, id) => {
                 const opt = document.createElement('option');
@@ -790,6 +812,10 @@
             if (activeBadge) activeBadge.classList.add('active');
 
             // Reset other filters
+            const orgEl = document.getElementById('orgFilter');
+            if (orgEl) orgEl.value = '';
+            document.getElementById('accountFilter').value = '';
+            document.getElementById('regionFilter').value = '';
             document.getElementById('recFilter').value = '';
             document.getElementById('sevFilter').value = '';
             document.getElementById('attachFilter').value = '';
@@ -816,6 +842,7 @@
 
         function applyFilters() {
             const query = (document.getElementById('searchInput').value || '').toLowerCase();
+            const org = document.getElementById('orgFilter')?.value || '';
             const account = document.getElementById('accountFilter').value;
             const region = document.getElementById('regionFilter').value;
             const rec = document.getElementById('recFilter').value;
@@ -824,6 +851,9 @@
             const exposure = document.getElementById('exposureFilter').value;
 
             currentFilteredData = RAW_DATA.filter(sg => {
+                // Organization
+                if (org && sg.OrgRootAccountId && sg.OrgRootAccountId !== org) return false;
+
                 // Search query
                 if (query) {
                     const matchId = sg.GroupId.toLowerCase().includes(query);
@@ -989,7 +1019,10 @@
                     </td>
                     <td>
                         <div style="font-weight: 500;">${escapeHtml(sg.AccountName || sg.AccountId)}</div>
-                        <div class="code-pill" style="font-size: 10px;">${sg.AccountId}</div>
+                        <div style="display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap;">
+                            <span class="code-pill" style="font-size: 10px;">${sg.AccountId}</span>
+                            ${sg.OrgRootAccountId ? `<span class="code-pill" style="font-size: 10px; color: #d8b4fe; border-color: #6b21a8;" title="AWS Organization Root Account">Org: ${sg.OrgRootAccountId}</span>` : ''}
+                        </div>
                     </td>
                     <td><span class="code-pill">${escapeHtml(sg.Region)}</span></td>
                     <td>${attachBadge}</td>
