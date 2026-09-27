@@ -57,12 +57,12 @@ def consolidate_reports(reports_dir: str, output_dir: str):
     discovered_sources = []
     if json_files:
         for jf in json_files:
-            match = re.search(r"security_audit_report_(\d+)\.json", os.path.basename(jf))
+            match = re.search(r"security_audit_report_(\d+)", os.path.basename(jf))
             org_root_id = match.group(1) if match else "Unknown"
             discovered_sources.append(("json", jf, org_root_id))
     elif html_files:
         for hf in html_files:
-            match = re.search(r"security_audit_report_(\d+)\.html", os.path.basename(hf))
+            match = re.search(r"security_audit_report_(\d+)", os.path.basename(hf))
             org_root_id = match.group(1) if match else "Unknown"
             discovered_sources.append(("html", hf, org_root_id))
     else:
