@@ -573,12 +573,12 @@
         <div class="metric-card success" onclick="setPresetFilter('candelete')">
             <div class="metric-title">Can Be Deleted</div>
             <div class="metric-value" id="metric-can-delete">0</div>
-            <div class="metric-subtext">Unattached (0 ENIs) &amp; non-default</div>
+            <div class="metric-subtext">Unattached Non-Default SGs (0 ENIs)</div>
         </div>
         <div class="metric-card purple" onclick="setPresetFilter('default')">
-            <div class="metric-title">Default SGs</div>
+            <div class="metric-title">Default SGs to Clean</div>
             <div class="metric-value" id="metric-default">0</div>
-            <div class="metric-subtext">Restrict inbound/outbound rules</div>
+            <div class="metric-subtext">Remove Ingress Rules to Isolate</div>
         </div>
     </div>
 
@@ -606,11 +606,13 @@
                 <label>Recommendation</label>
                 <select id="recFilter" onchange="applyFilters()">
                     <option value="">All Recommendations</option>
-                    <option value="CAN_DELETE">Can Be Deleted (Unattached)</option>
-                    <option value="RESTRICT_IMMEDIATELY">Restrict Immediately (Threats)</option>
-                    <option value="REVIEW_EXPOSURE">Review Public Exposure</option>
-                    <option value="DEFAULT_RESTRICT">Default SG (Restrict)</option>
-                    <option value="SAFE_IN_USE">Safe In Use</option>
+                    <option value="ALL_CLEANUP">🎯 All Cleanup Targets (Delete + Remove Ingress)</option>
+                    <option value="CAN_DELETE">🗑️ Can Be Deleted (Unattached - 0 Resources)</option>
+                    <option value="DEFAULT_RESTRICT">🧹 Remove Ingress (Default SGs with Rules)</option>
+                    <option value="DEFAULT_CLEAN">✅ Default SGs (Already Clean - 0 Ingress)</option>
+                    <option value="RESTRICT_IMMEDIATELY">🚨 Restrict Ingress Immediately (Threats)</option>
+                    <option value="REVIEW_EXPOSURE">⚠️ Review Public Exposure</option>
+                    <option value="SAFE_IN_USE">🛡️ Safe In Use (Internal Only)</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -644,10 +646,11 @@
         <div class="quick-presets">
             <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Quick Filters:</span>
             <span class="preset-badge active" id="preset-all" onclick="setPresetFilter('all')">All SGs</span>
-            <span class="preset-badge" id="preset-critical" onclick="setPresetFilter('critical')">🚨 Critical &amp; High</span>
+            <span class="preset-badge" id="preset-cleanup" onclick="setPresetFilter('cleanup')">🎯 All Cleanup Candidates</span>
             <span class="preset-badge" id="preset-candelete" onclick="setPresetFilter('candelete')">🗑️ Safe to Delete</span>
+            <span class="preset-badge" id="preset-default" onclick="setPresetFilter('default')">🧹 Remove Default Ingress</span>
+            <span class="preset-badge" id="preset-critical" onclick="setPresetFilter('critical')">🚨 Critical Threats</span>
             <span class="preset-badge" id="preset-exposed" onclick="setPresetFilter('exposed')">🌐 Internet Exposed</span>
-            <span class="preset-badge" id="preset-default" onclick="setPresetFilter('default')">🔒 Default SGs</span>
             <span class="preset-badge" id="preset-attached" onclick="setPresetFilter('attached')">🔌 Active Resources</span>
         </div>
     </div>
@@ -731,14 +734,14 @@
             let high = 0;
             let exposed = 0;
             let canDelete = 0;
-            let defaultSGs = 0;
+            let defaultSGsWithIngress = 0;
 
             RAW_DATA.forEach(sg => {
                 if (sg.MaxSeverity === 'CRITICAL') critical++;
                 if (sg.MaxSeverity === 'HIGH') high++;
                 if (sg.IsExposedToInternet) exposed++;
-                if (sg.Recommendation === 'CAN_DELETE') canDelete++;
-                if (sg.IsDefault) defaultSGs++;
+                if (sg.Recommendation === 'CAN_DELETE' || (!sg.IsAttached && !sg.IsDefault)) canDelete++;
+                if (sg.IsDefault && (sg.IngressRulesCount || 0) > 0) defaultSGsWithIngress++;
             });
 
             document.getElementById('metric-total').innerText = total;
@@ -746,7 +749,7 @@
             document.getElementById('metric-high').innerText = high;
             document.getElementById('metric-exposed').innerText = exposed;
             document.getElementById('metric-can-delete').innerText = canDelete;
-            document.getElementById('metric-default').innerText = defaultSGs;
+            document.getElementById('metric-default').innerText = defaultSGsWithIngress;
             document.getElementById('metric-scope-text').innerText = `${METADATA.accountCount} Accounts, ${METADATA.regionCount} Regions`;
         }
 
@@ -796,6 +799,8 @@
                 document.getElementById('sevFilter').value = 'CRITICAL';
             } else if (preset === 'high') {
                 document.getElementById('sevFilter').value = 'HIGH';
+            } else if (preset === 'cleanup') {
+                document.getElementById('recFilter').value = 'ALL_CLEANUP';
             } else if (preset === 'candelete') {
                 document.getElementById('recFilter').value = 'CAN_DELETE';
             } else if (preset === 'exposed') {
@@ -836,7 +841,17 @@
                 if (region && sg.Region !== region) return false;
 
                 // Recommendation
-                if (rec && sg.Recommendation !== rec) return false;
+                if (rec === 'ALL_CLEANUP') {
+                    const isCandidate = (sg.Recommendation === 'CAN_DELETE' || (!sg.IsAttached && !sg.IsDefault)) ||
+                                        (sg.IsDefault && (sg.IngressRulesCount || 0) > 0);
+                    if (!isCandidate) return false;
+                } else if (rec === 'DEFAULT_RESTRICT') {
+                    if (!sg.IsDefault || (sg.IngressRulesCount || 0) === 0) return false;
+                } else if (rec === 'DEFAULT_CLEAN') {
+                    if (!sg.IsDefault || (sg.IngressRulesCount || 0) > 0) return false;
+                } else if (rec && sg.Recommendation !== rec) {
+                    return false;
+                }
 
                 // Severity
                 if (sev && sg.MaxSeverity !== sev) return false;
@@ -866,14 +881,27 @@
             }
         }
 
-        function getRecommendationBadge(rec) {
-            switch (rec) {
-                case 'CAN_DELETE': return '<span class="badge badge-delete">CAN DELETE</span>';
-                case 'RESTRICT_IMMEDIATELY': return '<span class="badge badge-restrict">RESTRICT NOW</span>';
-                case 'REVIEW_EXPOSURE': return '<span class="badge badge-review">REVIEW</span>';
-                case 'DEFAULT_RESTRICT': return '<span class="badge badge-default">DEFAULT SG</span>';
-                default: return '<span class="badge badge-safe">SAFE IN USE</span>';
+        function getRecommendationBadge(sg) {
+            const rec = sg.Recommendation;
+            const ingressCount = sg.IngressRulesCount || 0;
+
+            if (rec === 'CAN_DELETE' || (!sg.IsAttached && !sg.IsDefault)) {
+                return '<span class="badge badge-delete" title="No resources attached. Safe to back up and delete.">🗑️ CAN BE DELETED</span>';
             }
+            if (sg.IsDefault) {
+                if (ingressCount > 0) {
+                    return '<span class="badge" style="background:#451a03; color:#fb923c; border:1px solid #9a3412;" title="Default SG cannot be deleted via AWS API. Remove ingress rules to make clean.">🧹 REMOVE INGRESS (DEFAULT SG)</span>';
+                } else {
+                    return '<span class="badge badge-clean" title="Default SG has 0 ingress rules. Already restricted and clean.">✅ DEFAULT SG (CLEAN)</span>';
+                }
+            }
+            if (rec === 'RESTRICT_IMMEDIATELY') {
+                return '<span class="badge badge-restrict" title="Attached with critical/high threat exposure. Restrict ingress immediately.">🚨 RESTRICT INGRESS NOW</span>';
+            }
+            if (rec === 'REVIEW_EXPOSURE') {
+                return '<span class="badge badge-review" title="Attached with public web/custom exposure. Review ALB/WAF protection.">⚠️ REVIEW EXPOSURE</span>';
+            }
+            return '<span class="badge badge-safe" title="Attached with internal/private rules only.">🛡️ SAFE IN USE</span>';
         }
 
         function renderTable() {
@@ -907,11 +935,23 @@
                     }
                     threatHtml += '</ul>';
                 } else if (sg.IsDefault) {
-                    threatHtml = '<span style="color: var(--purple-text); font-size: 11px;">Default VPC Security Group</span>';
+                    if ((sg.IngressRulesCount || 0) > 0) {
+                        threatHtml = `<span style="color: #fb923c; font-size: 11px; font-weight: 500;">⚠️ Ingress active (${sg.IngressRulesCount} rule). Revoke ingress rules to clean.</span>`;
+                    } else {
+                        threatHtml = '<span style="color: var(--success-text); font-size: 11px;">✅ Ingress clean (0 rules). Isolated default SG.</span>';
+                    }
                 } else if (!sg.IsAttached) {
-                    threatHtml = '<span style="color: var(--success-text); font-size: 11px;">No active ENIs. Zero traffic.</span>';
+                    threatHtml = '<span style="color: var(--success-text); font-size: 11px; font-weight: 500;">✅ 0 attached resources. Safe to back up & delete.</span>';
                 } else {
                     threatHtml = '<span style="color: var(--text-muted); font-size: 11px;">Private/Internal traffic only.</span>';
+                }
+
+                // Action description HTML
+                let actionText = sg.ActionTitle || '';
+                if (sg.IsDefault && (sg.IngressRulesCount || 0) > 0) {
+                    actionText = 'Remove Ingress Rules (Default SG - Make Clean)';
+                } else if (sg.Recommendation === 'CAN_DELETE' || (!sg.IsAttached && !sg.IsDefault)) {
+                    actionText = 'Safe to Delete (No Attached Resources)';
                 }
 
                 // Attachment badge
@@ -931,16 +971,19 @@
                 }
 
                 tr.innerHTML = `
-                    <td>${getRecommendationBadge(sg.Recommendation)}</td>
+                    <td>${getRecommendationBadge(sg)}</td>
                     <td>${getSeverityBadge(sg.MaxSeverity)}</td>
                     <td>
                         <div class="sg-name">
                             <span>${escapeHtml(sg.GroupName)}</span>
                             ${sg.IsDefault ? '<span class="badge badge-default">default</span>' : ''}
                         </div>
-                        <div>
+                        <div style="margin-top: 2px;">
                             <span class="sg-id" onclick="copyToClipboard('${sg.GroupId}')" title="Click to copy SG ID">${sg.GroupId}</span>
                             <span class="code-pill">${escapeHtml(sg.VpcId || 'N/A')}</span>
+                        </div>
+                        <div style="font-size: 11px; color: #38bdf8; font-weight: 600; margin-top: 4px;">
+                            Action: ${escapeHtml(actionText)}
                         </div>
                         <div class="sg-desc">${escapeHtml(sg.Description || '')}</div>
                     </td>
@@ -1169,24 +1212,46 @@
         }
 
         function exportDeletionList() {
-            const candidates = RAW_DATA.filter(sg => sg.Recommendation === 'CAN_DELETE');
-            if (candidates.length === 0) {
-                alert('No unattached deletion candidates found!');
+            const deleteCandidates = RAW_DATA.filter(sg => sg.Recommendation === 'CAN_DELETE' || (!sg.IsAttached && !sg.IsDefault));
+            const defaultCleanCandidates = RAW_DATA.filter(sg => sg.IsDefault && (sg.IngressRulesCount || 0) > 0);
+            
+            if (deleteCandidates.length === 0 && defaultCleanCandidates.length === 0) {
+                alert('No cleanup candidates found!');
                 return;
             }
 
             const lines = [
-                `# AWS Security Groups Recommended for Deletion (Unattached & Non-Default)`,
-                `# Total Candidates: ${candidates.length}`,
-                `# Run cleanup_security_groups.sh to safely back up and delete these groups.`,
-                `# Format: AccountId,Region,GroupId,GroupName,VpcId`,
-                ...candidates.map(sg => `${sg.AccountId},${sg.Region},${sg.GroupId},${sg.GroupName},${sg.VpcId}`)
+                `================================================================================`,
+                ` AWS SECURITY GROUP REMEDIATION & CLEANUP MANIFEST`,
+                ` Generated: ${new Date().toISOString()}`,
+                `================================================================================`,
+                ``,
+                `SUMMARY:`,
+                `  - Total Unattached Non-Default SGs to DELETE : ${deleteCandidates.length}`,
+                `  - Total Default SGs to REVOKE INGRESS RULES  : ${defaultCleanCandidates.length}`,
+                `  - Combined Total Remediation Targets         : ${deleteCandidates.length + defaultCleanCandidates.length}`,
+                ``,
+                `AUTOMATED REMEDIATION COMMAND:`,
+                `  Dry-Run Preview : ./cleanup_security_groups.sh --audit-file <audit_report.json>`,
+                `  Execute Cleanup : ./cleanup_security_groups.sh --audit-file <audit_report.json> --execute`,
+                ``,
+                `================================================================================`,
+                ` SECTION 1: NON-DEFAULT UNATTACHED SECURITY GROUPS (ACTION: BACKUP & DELETE)`,
+                `================================================================================`,
+                `AccountId,Region,GroupId,GroupName,VpcId`,
+                ...deleteCandidates.map(sg => `${sg.AccountId},${sg.Region},${sg.GroupId},${sg.GroupName},${sg.VpcId}`),
+                ``,
+                `================================================================================`,
+                ` SECTION 2: DEFAULT SECURITY GROUPS (ACTION: BACKUP & REVOKE INGRESS RULES ONLY)`,
+                `================================================================================`,
+                `AccountId,Region,GroupId,GroupName,VpcId,IngressRulesCount`,
+                ...defaultCleanCandidates.map(sg => `${sg.AccountId},${sg.Region},${sg.GroupId},${sg.GroupName},${sg.VpcId},${sg.IngressRulesCount || 0}`)
             ];
 
             const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `unattached_security_groups_candidates_${new Date().toISOString().slice(0, 10)}.txt`;
+            link.download = `aws_security_group_remediation_manifest_${new Date().toISOString().slice(0, 10)}.txt`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);

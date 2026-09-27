@@ -59,14 +59,14 @@ analyze_region_data() {
                     Threats: [],
                     ThreatCount: 0,
                     Recommendation: (
-                        if $is_default then "DEFAULT_RESTRICT"
+                        if $is_default then (if ($sg.IpPermissions | length) > 0 then "DEFAULT_RESTRICT" else "DEFAULT_CLEAN" end)
                         elif ($is_attached | not) then "CAN_DELETE"
                         elif $is_exposed then "RESTRICT_IMMEDIATELY"
                         else "SAFE_IN_USE" end
                     ),
                     ActionTitle: (
-                        if $is_default then "Default SG - Restrict Traffic"
-                        elif ($is_attached | not) then "Safe to Delete (Unattached)"
+                        if $is_default then (if ($sg.IpPermissions | length) > 0 then "Remove Ingress Rules (Default SG - Make Clean)" else "Default SG - Clean (0 Inbound Rules)" end)
+                        elif ($is_attached | not) then "Safe to Delete (No Attached Resources)"
                         elif $is_exposed then "Restrict Ingress Immediately"
                         else "Safe & Monitored" end
                     ),

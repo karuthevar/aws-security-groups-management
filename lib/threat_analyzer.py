@@ -267,14 +267,20 @@ def analyze_security_groups(
                 max_severity = "LOW" if len(ingress_rules) > 0 else "CLEAN"
 
         # Determine actionable recommendation
+        ingress_count = len(ingress_rules)
         if is_default:
-            recommendation = "DEFAULT_RESTRICT"
-            action_title = "Default SG - Restrict Traffic"
-            action_desc = "AWS Default Security Group cannot be deleted via AWS API. Best practice is to revoke all ingress and egress rules to prevent unintentional use."
+            if ingress_count > 0:
+                recommendation = "DEFAULT_RESTRICT"
+                action_title = "Remove Ingress Rules (Default SG - Make Clean)"
+                action_desc = f"AWS Default Security Group cannot be deleted via AWS API. Remove its {ingress_count} inbound rule(s) to isolate and make it completely clean."
+            else:
+                recommendation = "DEFAULT_CLEAN"
+                action_title = "Default SG - Clean (0 Inbound Rules)"
+                action_desc = "AWS Default Security Group has 0 inbound rules. Already restricted and clean."
         elif not is_attached:
             recommendation = "CAN_DELETE"
-            action_title = "Safe to Delete (Unattached)"
-            action_desc = "No active resources (EC2, ELB, RDS, Lambda, etc.) are attached. Safe to back up and delete to reduce attack surface and clutter."
+            action_title = "Safe to Delete (No Attached Resources)"
+            action_desc = "No active resources (0 ENIs) are attached. Safe to back up and delete to eliminate clutter and attack surface."
         elif is_attached and max_severity in ("CRITICAL", "HIGH"):
             recommendation = "RESTRICT_IMMEDIATELY"
             action_title = "Restrict Ingress Immediately"
