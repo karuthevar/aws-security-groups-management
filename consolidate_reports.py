@@ -127,13 +127,21 @@ def consolidate_reports(reports_dir: str, output_dir: str):
         "totalSGs": total_sgs_count
     }
 
+    # Robust replacement of data and metadata payloads
     consolidated_html = template_html.replace(
         "/* __DATA_PAYLOAD__ */ []",
         json.dumps(all_sgs)
-    ).replace(
-        "/* __METADATA_PAYLOAD__ */ {}",
-        json.dumps(metadata)
-    ).replace(
+    )
+    if "/* __METADATA_PAYLOAD__ */ {}" in consolidated_html:
+        consolidated_html = consolidated_html.replace("/* __METADATA_PAYLOAD__ */ {}", json.dumps(metadata))
+    else:
+        consolidated_html = re.sub(
+            r"const METADATA\s*=\s*/\* __METADATA_PAYLOAD__ \*/\s*\{[^}]*\};",
+            f"const METADATA = {json.dumps(metadata)};",
+            consolidated_html
+        )
+
+    consolidated_html = consolidated_html.replace(
         "Generated across Organization Accounts &bull; Threat & Attachment Security Review",
         f"Consolidated across {len(org_summaries)} AWS Organizations ({unique_accounts} Member Accounts, {unique_regions} Regions) &bull; Threat &amp; Remediation Audit"
     )

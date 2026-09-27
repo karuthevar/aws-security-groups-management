@@ -63,10 +63,16 @@ with open(template_path, 'r', encoding='utf-8') as f:
 output_content = template_content.replace(
     '/* __DATA_PAYLOAD__ */ []',
     json.dumps(data)
-).replace(
-    '/* __METADATA_PAYLOAD__ */ {}',
-    json.dumps(metadata)
 )
+if '/* __METADATA_PAYLOAD__ */ {}' in output_content:
+    output_content = output_content.replace('/* __METADATA_PAYLOAD__ */ {}', json.dumps(metadata))
+else:
+    import re
+    output_content = re.sub(
+        r'const METADATA\s*=\s*/\* __METADATA_PAYLOAD__ \*/\s*\{[^}]*\};',
+        f'const METADATA = {json.dumps(metadata)};',
+        output_content
+    )
 
 with open(output_html_path, 'w', encoding='utf-8') as f:
     f.write(output_content)
