@@ -11,8 +11,8 @@ TEMPLATE_FILE="${HTML_LIB_DIR}/../templates/report_template.html"
 generate_html_report() {
     local audit_json="$1"
     local output_html="$2"
-    local account_count="${3:-1}"
-    local region_count="${4:-1}"
+    local account_count="${3:-}"
+    local region_count="${4:-}"
 
     if [[ ! -f "${audit_json}" ]]; then
         log_error "Audit JSON file not found: ${audit_json}"
@@ -25,6 +25,7 @@ generate_html_report() {
     fi
 
     log_step "Generating interactive HTML security dashboard: ${output_html}..."
+    mkdir -p "$(dirname "${output_html}")"
 
     # Detect python or fallback
     local python_bin=""
@@ -35,7 +36,7 @@ generate_html_report() {
     fi
 
     if [[ -n "${python_bin}" ]]; then
-        "${python_bin}" -c "
+        if "${python_bin}" -c "
 import sys
 import json
 import datetime
@@ -43,11 +44,28 @@ import datetime
 audit_json_path = sys.argv[1]
 template_path = sys.argv[2]
 output_html_path = sys.argv[3]
-account_count = int(sys.argv[4])
-region_count = int(sys.argv[5])
 
 with open(audit_json_path, 'r', encoding='utf-8') as f:
     data = json.load(f)
+
+# Safely parse or compute counts
+try:
+    account_count = int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4].strip() else None
+except (ValueError, TypeError):
+    account_count = None
+
+if not account_count or account_count <= 0:
+    unique_accounts = set(x.get('AccountId') for x in data if x.get('AccountId'))
+    account_count = len(unique_accounts) if unique_accounts else 1
+
+try:
+    region_count = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5].strip() else None
+except (ValueError, TypeError):
+    region_count = None
+
+if not region_count or region_count <= 0:
+    unique_regions = set(x.get('Region') for x in data if x.get('Region'))
+    region_count = len(unique_regions) if unique_regions else 1
 
 metadata = {
     'scanDate': datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -78,13 +96,33 @@ with open(output_html_path, 'w', encoding='utf-8') as f:
     f.write(output_content)
 
 print(f'HTML report successfully generated with {len(data)} security groups.')
-" "${audit_json}" "${TEMPLATE_FILE}" "${output_html}" "${account_count}" "${region_count}"
-
-        return $?
+" "${audit_json}" "${TEMPLATE_FILE}" "${output_html}" "${account_count:-}" "${region_count:-}"; then
+            if [[ -s "${output_html}" ]]; then
+                log_success "Interactive HTML report generated successfully: ${output_html}"
+                return 0
+            else
+                log_warn "Python execution finished but ${output_html} is empty. Trying fallback..."
+            fi
+        else
+            log_warn "Python script failed to generate HTML. Falling back to alternative stream generator..."
+        fi
     fi
 
-    # Fallback to sed/awk if python is unavailable
-    log_info "Embedding JSON data into HTML template via awk..."
-    awk -v data="$(cat "${audit_json}")" '{gsub(/\/\* __DATA_PAYLOAD__ \*\/ \[\]/, data); print}' "${TEMPLATE_FILE}" > "${output_html}"
-    return 0
+    # Stream fallback if python is unavailable or failed (avoids awk buffer limit errors)
+    log_info "Embedding JSON data into HTML template via stream fallback..."
+    while IFS= read -r line; do
+        if [[ "${line}" =~ /\*\ __DATA_PAYLOAD__\ \*/\ \[\] ]]; then
+            cat "${audit_json}"
+        else
+            printf "%s\n" "${line}"
+        fi
+    done < "${TEMPLATE_FILE}" > "${output_html}"
+
+    if [[ -s "${output_html}" ]]; then
+        log_success "Interactive HTML report generated via fallback: ${output_html}"
+        return 0
+    else
+        log_error "Failed to generate HTML report: ${output_html}"
+        return 1
+    fi
 }

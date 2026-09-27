@@ -20,7 +20,7 @@ FALLBACK_ROLES=("AWSControlTowerExecution" "AdministratorAccess" "OrganizationAc
 SPECIFIC_ACCOUNTS=""
 SPECIFIC_REGIONS=""
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-OUTPUT_DIR="${SCRIPT_DIR}/audit_results/${TIMESTAMP}"
+OUTPUT_DIR="${SCRIPT_DIR}/reports"
 GENERATE_HTML=true
 MAX_PARALLEL=4
 
@@ -40,8 +40,8 @@ OPTIONS:
     -g, --regions <REG,REG...>  Comma-separated list of AWS Regions to scan.
                                 Default: All enabled regions in each account.
     -o, --output-dir <DIR>      Output directory for JSON and HTML reports.
-                                Default: ./audit_results/<timestamp>
-        --no-html               Skip generating the interactive HTML dashboard.
+                                Default: ./reports
+    --no-html                   Skip generating the interactive HTML dashboard.
     -h, --help                  Show this help message and exit.
 
 EXAMPLES:
@@ -106,7 +106,7 @@ check_prerequisites
 
 # Step 2: Prepare output workspace
 mkdir -p "${OUTPUT_DIR}"
-RAW_TEMP_DIR="${OUTPUT_DIR}/.tmp_raw"
+RAW_TEMP_DIR="${OUTPUT_DIR}/.tmp_raw_${TIMESTAMP}"
 mkdir -p "${RAW_TEMP_DIR}"
 
 MASTER_JSON="${OUTPUT_DIR}/security_audit_report.json"
@@ -249,6 +249,16 @@ if [[ "${GENERATE_HTML}" == "true" ]]; then
     generate_html_report "${MASTER_JSON}" "${MASTER_HTML}" "${ACCOUNT_COUNT}" "${TOTAL_REGIONS_COUNT}"
 fi
 
+# Also preserve an account-specific copy if CURRENT_ACCOUNT_ID is available
+if [[ -n "${CURRENT_ACCOUNT_ID:-}" ]]; then
+    ACCOUNT_JSON="${OUTPUT_DIR}/security_audit_report_${CURRENT_ACCOUNT_ID}.json"
+    ACCOUNT_HTML="${OUTPUT_DIR}/security_audit_report_${CURRENT_ACCOUNT_ID}.html"
+    cp -f "${MASTER_JSON}" "${ACCOUNT_JSON}" 2>/dev/null || true
+    if [[ "${GENERATE_HTML}" == "true" && -f "${MASTER_HTML}" ]]; then
+        cp -f "${MASTER_HTML}" "${ACCOUNT_HTML}" 2>/dev/null || true
+    fi
+fi
+
 # Step 5: Executive Console Summary
 log_header "Security Group Audit Complete"
 
@@ -265,7 +275,21 @@ echo ""
 log_success "Audit JSON Dataset:  ${MASTER_JSON}"
 if [[ "${GENERATE_HTML}" == "true" ]]; then
     log_success "Interactive HTML:    ${MASTER_HTML}"
-    log_info "Open '${MASTER_HTML}' in any web browser to view, filter, and export the audit results."
+    if [[ -n "${CURRENT_ACCOUNT_ID:-}" && -f "${ACCOUNT_HTML:-}" ]]; then
+        log_success "Account Copy:        ${ACCOUNT_HTML}"
+    fi
+
+    echo ""
+    printf "${COLOR_CYAN}%s\n %s\n%s${COLOR_RESET}\n" \
+        "--------------------------------------------------------------------------------" \
+        "HOW TO DOWNLOAD AND VIEW THIS REPORT IN AWS CLOUDSHELL" \
+        "--------------------------------------------------------------------------------"
+    printf "1. In AWS CloudShell, click the ${COLOR_WHITE}'Actions'${COLOR_RESET} menu in the top-right corner.\n"
+    printf "2. Click ${COLOR_WHITE}'Download file'${COLOR_RESET}.\n"
+    printf "3. In the input box, enter the full path to the report:\n"
+    printf "   ${COLOR_GREEN}%s${COLOR_RESET}\n" "${MASTER_HTML}"
+    printf "4. Click ${COLOR_WHITE}'Download'${COLOR_RESET} and open the saved file in your web browser.\n"
+    printf "${COLOR_CYAN}%s${COLOR_RESET}\n" "--------------------------------------------------------------------------------"
 fi
 
 if [[ "${CAN_DELETE_COUNT}" -gt 0 ]]; then

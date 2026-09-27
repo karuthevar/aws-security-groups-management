@@ -13,40 +13,91 @@ import re
 import datetime
 
 def consolidate_reports(reports_dir: str, output_dir: str):
-    reports_pattern = os.path.join(reports_dir, "security_audit_report_*.html")
-    files = sorted(glob.glob(reports_pattern))
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "report_template.html")
     
-    # Exclude previously consolidated reports if any
-    files = [f for f in files if "consolidated" not in os.path.basename(f)]
+    # 1. Discover JSON files
+    json_pattern = os.path.join(reports_dir, "security_audit_report_*.json")
+    json_files = sorted(glob.glob(json_pattern))
+    json_files = [f for f in json_files if "consolidated" not in os.path.basename(f)]
 
-    if not files:
-        print(f"No security audit report HTML files found in {reports_dir}")
+    # 2. Discover HTML files
+    html_pattern = os.path.join(reports_dir, "security_audit_report_*.html")
+    html_files = sorted(glob.glob(html_pattern))
+    html_files = [f for f in html_files if "consolidated" not in os.path.basename(f)]
+
+    # Generate missing HTML reports for any JSON files present
+    for jf in json_files:
+        hf = jf.rsplit('.', 1)[0] + '.html'
+        if not os.path.exists(hf) and os.path.exists(template_path):
+            try:
+                with open(jf, "r", encoding="utf-8") as fp:
+                    jdata = json.load(fp)
+                with open(template_path, "r", encoding="utf-8") as fp:
+                    tmpl = fp.read()
+                meta = {
+                    'scanDate': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    'accountCount': len(set(x.get('AccountId') for x in jdata if x.get('AccountId'))) or 1,
+                    'regionCount': len(set(x.get('Region') for x in jdata if x.get('Region'))) or 1,
+                    'totalSGs': len(jdata)
+                }
+                out = tmpl.replace('/* __DATA_PAYLOAD__ */ []', json.dumps(jdata))
+                if '/* __METADATA_PAYLOAD__ */ {}' in out:
+                    out = out.replace('/* __METADATA_PAYLOAD__ */ {}', json.dumps(meta))
+                else:
+                    out = re.sub(r'const METADATA\s*=\s*/\* __METADATA_PAYLOAD__ \*/\s*\{[^}]*\};', f'const METADATA = {json.dumps(meta)};', out)
+                with open(hf, "w", encoding="utf-8") as fp:
+                    fp.write(out)
+                print(f"  [AUTO-GENERATED] Created missing HTML dashboard: {hf}")
+                if hf not in html_files:
+                    html_files.append(hf)
+            except Exception as e:
+                print(f"  [WARN] Failed to auto-generate HTML for {jf}: {e}")
+
+    # Use JSON files if available, otherwise HTML files
+    discovered_sources = []
+    if json_files:
+        for jf in json_files:
+            match = re.search(r"security_audit_report_(\d+)\.json", os.path.basename(jf))
+            org_root_id = match.group(1) if match else "Unknown"
+            discovered_sources.append(("json", jf, org_root_id))
+    elif html_files:
+        for hf in html_files:
+            match = re.search(r"security_audit_report_(\d+)\.html", os.path.basename(hf))
+            org_root_id = match.group(1) if match else "Unknown"
+            discovered_sources.append(("html", hf, org_root_id))
+    else:
+        print(f"No security audit report JSON or HTML files found in {reports_dir}")
         return
 
-    print(f"Discovered {len(files)} AWS Organization report(s) to consolidate:")
+    print(f"Discovered {len(discovered_sources)} AWS Organization report(s) to consolidate:")
     all_sgs = []
     org_summaries = {}
 
-    for f in files:
-        filename = os.path.basename(f)
-        match = re.search(r"security_audit_report_(\d+)\.html", filename)
-        org_root_id = match.group(1) if match else "Unknown"
+    for src_type, fpath, org_root_id in discovered_sources:
+        filename = os.path.basename(fpath)
+        if src_type == "json":
+            try:
+                with open(fpath, "r", encoding="utf-8") as fp:
+                    records = json.load(fp)
+            except Exception as e:
+                print(f"  [ERROR] Failed to load JSON from {filename}: {e}")
+                continue
+        else:
+            with open(fpath, "r", encoding="utf-8") as fp:
+                content = fp.read()
 
-        with open(f, "r", encoding="utf-8") as fp:
-            content = fp.read()
+            idx1 = content.find("const RAW_DATA = ") + len("const RAW_DATA = ")
+            idx2 = content.find("const METADATA = ")
+            if idx1 == -1 or idx2 == -1:
+                print(f"  [WARN] Skipping {filename}: could not parse RAW_DATA payload.")
+                continue
 
-        idx1 = content.find("const RAW_DATA = ") + len("const RAW_DATA = ")
-        idx2 = content.find("const METADATA = ")
-        if idx1 == -1 or idx2 == -1:
-            print(f"  [WARN] Skipping {filename}: could not parse RAW_DATA payload.")
-            continue
-
-        raw_json = content[idx1:idx2].strip().rstrip(";")
-        try:
-            records = json.loads(raw_json)
-        except Exception as e:
-            print(f"  [ERROR] Failed to decode JSON in {filename}: {e}")
-            continue
+            raw_json = content[idx1:idx2].strip().rstrip(";")
+            try:
+                records = json.loads(raw_json)
+            except Exception as e:
+                print(f"  [ERROR] Failed to decode JSON in {filename}: {e}")
+                continue
 
         org_accounts = set()
         org_regions = set()
