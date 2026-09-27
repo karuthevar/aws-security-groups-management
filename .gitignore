@@ -5,17 +5,27 @@ config.env
 .env
 *.pem
 *.key
+credentials
+secrets*
 
-# Reports and Output data
+# Reports and Output data (NEVER commit to git)
 reports/
+reports/**
+audit_results/
+audit_results/**
 *.html
 *.json
 !test/*.json
 !templates/*.html
 
-# Backups (contain actual infrastructure SG JSON snapshots)
+# Backups (contain actual infrastructure SG JSON snapshots - NEVER commit to git)
 backups/
+backups/**
 *.bak
+
+# Temporary / Scratch files
+.tmp_raw*
+*.tmp
 
 # Python artifacts
 __pycache__/

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Pre-Commit Hook: Guard against committing sensitive reports or backups
+# ==============================================================================
+
+FORBIDDEN_PATTERNS=(
+    "^reports/"
+    "^backups/"
+    "^audit_results/"
+    "\.pem$"
+    "\.key$"
+    "\.bak$"
+    "config\.env$"
+    "\.env$"
+)
+
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only)
+
+if [[ -z "${STAGED_FILES}" ]]; then
+    exit 0
+fi
+
+FAILED=0
+for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+    MATCHES=$(echo "${STAGED_FILES}" | grep -E "${pattern}" || true)
+    if [[ -n "${MATCHES}" ]]; then
+        echo ""
+        echo "[BLOCKED] Security violation: Attempted to commit restricted file(s):"
+        echo "${MATCHES}" | sed 's/^/  - /'
+        echo "Reason: Reports, infrastructure backups, and credentials must never be committed to Git."
+        FAILED=1
+    fi
+done
+
+if [[ "${FAILED}" -eq 1 ]]; then
+    echo ""
+    echo "To unstage these files, run:"
+    echo "  git reset HEAD reports/ backups/ audit_results/"
+    echo ""
+    exit 1
+fi
+
+exit 0

@@ -1,0 +1,31 @@
+name: Repository Security Guard
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  verify-no-sensitive-data:
+    name: Verify No Reports, Backups, or Credentials in Git
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan Repository for Forbidden Files
+        run: |
+          echo "Verifying no reports, backups, or credentials are tracked in Git..."
+          
+          FORBIDDEN_FILES=$(git ls-files | grep -E '^(reports/|backups/|audit_results/)|\.(pem|key|bak)$|config\.env$' || true)
+          
+          if [ -n "$FORBIDDEN_FILES" ]; then
+            echo "::error::Security policy violation: Restricted files detected in repository tracking:"
+            echo "$FORBIDDEN_FILES"
+            exit 1
+          fi
+          
+          echo "Check passed: No reports, backups, or credentials found in Git."
