@@ -1,0 +1,26 @@
+{
+  "account_block_public_access": {
+    "BlockPublicAcls": false,
+    "IgnorePublicAcls": false,
+    "BlockPublicPolicy": false,
+    "RestrictPublicBuckets": false
+  },
+  "buckets": [
+    {
+      "Name": "company-data-unencrypted",
+      "EnforcesSSL": false,
+      "VersioningEnabled": false,
+      "Region": "us-east-1"
+    }
+  ],
+  "ebs_volumes": [
+    {
+      "VolumeId": "vol-0123456789abcdef0",
+      "State": "available",
+      "Size": 100,
+      "Attachments": []
+    }
+  ],
+  "ebs_default_encryption_enabled": false,
+  "backup_vaults": []
+}

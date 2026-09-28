@@ -1,0 +1,25 @@
+{
+  "in_organization": true,
+  "password_policy": {
+    "MinimumPasswordLength": 12,
+    "RequireSymbols": true,
+    "RequireNumbers": true,
+    "RequireUppercaseCharacters": true,
+    "RequireLowercaseCharacters": true,
+    "MaxPasswordAge": 120,
+    "PasswordReusePrevention": 12
+  },
+  "account_summary": {
+    "AccountMFAEnabled": 0
+  },
+  "users": [
+    {
+      "UserName": "admin-bob",
+      "MFAEnabled": false,
+      "HasConsoleAccess": true,
+      "GroupList": [],
+      "UserPolicyList": ["AdministratorInlineAccess"]
+    }
+  ],
+  "has_support_role": false
+}

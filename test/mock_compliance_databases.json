@@ -1,0 +1,15 @@
+{
+  "rds_instances": [
+    {
+      "DBInstanceIdentifier": "prod-mysql-primary",
+      "DeletionProtection": false,
+      "StorageEncrypted": false
+    }
+  ],
+  "dynamodb_tables": [
+    {
+      "TableName": "SessionTokens",
+      "PointInTimeRecoveryEnabled": false
+    }
+  ]
+}

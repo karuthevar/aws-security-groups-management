@@ -15,8 +15,10 @@ audit_results/
 audit_results/**
 *.html
 *.json
-!test/*.json
+!test/mock_*.json
+!controls/**/*.json
 !templates/*.html
+test/test_*
 
 # Backups (contain actual infrastructure SG JSON snapshots - NEVER commit to git)
 backups/

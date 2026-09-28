@@ -225,9 +225,103 @@ If you ever need to restore any deleted security group:
 
 ---
 
+## 🛡️ Enterprise Security & Continuous Compliance Suite (170+ Rules)
+
+A comprehensive, multi-account compliance framework evaluating AWS environments across 7 critical security domains: **IAM, Network, Logging, Storage, Compute, Databases, and Encryption**.
+
+### 🌟 Remediation Impact Standard (Zero-Impact Focus)
+Every rule finding is classified by **operational impact** so security teams can deliver maximum risk reduction with minimum friction:
+- **`ZERO_IMPACT_QUICK_WIN`**: Safe removals (unattached EIPs, unattached EBS volumes, unused custom NACLs, stopped EC2 instances > 30 days) and non-breaking security toggles (S3 Account Block Public Access, CloudTrail log file validation, KMS CMK key rotation, S3 versioning, DynamoDB PITR, RDS & ELB deletion protection, ECR scan-on-push). **Zero downtime on running workloads.**
+- **`LOW_IMPACT_CONFIG`**: Safe service configurations (VPC Flow Logs, CloudWatch CIS alarms & metric filters, S3 SSL enforcement, AWS GuardDuty, Security Hub).
+- **`MEDIUM_IMPACT_OPERATIONAL`**: Operational policy updates (IAM MFA enforcement, password rotation policies, access key rotation).
+- **`HIGH_IMPACT_ARCHITECTURAL`**: Structural infrastructure changes (RDS storage encryption migration, multi-AZ failover setup).
+
+---
+
+### 🚀 Running the Compliance Suite
+
+#### 1. Master Runner (All Domains in One Invocation):
+```bash
+# Audit all 7 domains across all Organization accounts & enabled regions
+./audit_all.sh
+
+# Select specific domains to audit
+./audit_all.sh --modules iam,network,storage
+
+# Audit specific member accounts and regions
+./audit_all.sh --accounts 111122223333,444455556666 --regions us-east-1,us-west-2
+```
+
+#### 2. Individual Domain Audit Scripts:
+Run any domain scanner independently as needed:
+```bash
+# 1. Identity & Access Management (IAM & Root MFA, Password Policies)
+./audit_iam.sh
+
+# 2. Network & Perimeter (VPC Flow Logs, Unattached EIPs, Unused NACLs, Default SGs)
+./audit_network.sh
+
+# 3. Logging & Monitoring (CloudTrail Multi-Region, CloudWatch Retentions, CIS Alarms)
+./audit_logging_monitoring.sh
+
+# 4. Storage & Backup (S3 BPA, SSL, Versioning, Unattached EBS, Backup Vaults)
+./audit_storage_backup.sh
+
+# 5. Compute & Workloads (Stale Stopped EC2 Instances > 30 Days)
+./audit_compute.sh
+
+# 6. Databases & Caching (RDS Deletion Protection, DynamoDB PITR)
+./audit_databases.sh
+
+# 7. Encryption & Threat Detection (KMS Rotation, GuardDuty, Security Hub, ECR, ELB)
+./audit_encryption_security.sh
+```
+
+---
+
+### 🔒 Continuous Guardrails & Prevention (SCPs & AWS Config)
+
+To prevent future creation of non-compliant resources, deploy the included guardrails:
+
+#### 1. AWS Service Control Policies (`controls/scps/`):
+Attach these preventive SCPs to your AWS Organizations root or Organizational Units (OUs):
+- `controls/scps/scp_guardrail_s3.json`: Blocks public S3 access, unencrypted object uploads, and non-HTTPS S3 requests.
+- `controls/scps/scp_guardrail_logging_integrity.json`: Prevents stopping CloudTrail, deleting CloudWatch log groups or CIS metric filters, and stopping AWS Config.
+- `controls/scps/scp_guardrail_encryption.json`: Blocks creating unencrypted EBS volumes or unencrypted RDS instances, and enforces default EBS encryption.
+- `controls/scps/scp_guardrail_iam_root.json`: Restricts direct root account usage, protects password policies, and enforces MFA.
+- `controls/scps/scp_guardrail_network.json`: Prevents deleting VPC Flow Logs and blocks opening default security group ingress.
+
+#### 2. AWS Config Conformance Pack (`controls/config_rules/`):
+Deploy continuous detection and automated auditing across your entire Organization with one command:
+```bash
+# Organization-wide continuous deployment:
+aws configservice put-organization-conformance-pack \
+  --organization-conformance-pack-name EnterpriseSecurityBaseline \
+  --template-body file://controls/config_rules/conformance_pack_security_baseline.yaml
+
+# Single-account deployment:
+aws configservice put-conformance-pack \
+  --conformance-pack-name SecurityBaseline \
+  --template-body file://controls/config_rules/conformance_pack_security_baseline.yaml
+```
+
+---
+
+### 💻 AWS CloudShell Download Instructions
+All interactive HTML reports (`security_audit_report.html`, `enterprise_compliance_report.html`, or domain-specific dashboards) can be viewed directly from AWS CloudShell:
+1. In AWS CloudShell, click the **Actions** menu in the top-right corner.
+2. Select **Download file**.
+3. Enter the absolute path displayed in the terminal:
+   ```
+   /home/cloudshell-user/.../reports/enterprise_compliance_report.html
+   ```
+4. Click **Download** and open the saved file in your web browser.
+
+---
+
 ## 🧪 Automated Test Suite
 
-A built-in test runner is included to verify the threat engine, HTML dashboard generation, backup manifest handling, and restoration:
+A built-in test runner verifies threat risk scoring, attachment detection, compliance evaluations, HTML report generators, and SCP syntax:
 
 ```bash
 ./test/run_tests.sh
@@ -239,21 +333,44 @@ A built-in test runner is included to verify the threat engine, HTML dashboard g
 
 ```
 security group/
-├── audit_security_groups.sh      # Part 1: Organization-wide scanner & HTML generator
-├── cleanup_security_groups.sh    # Part 2: Backup & safe deletion of unattached SGs
-├── restore_security_groups.sh    # Part 2: Re-creation & restore tool from JSON backups
-├── config.env.example            # Environment configuration template
-├── README.md                     # Comprehensive documentation
+├── audit_all.sh                  # Master runner for all 7 compliance domains
+├── audit_iam.sh                  # Domain 1: IAM & Root Governance
+├── audit_network.sh              # Domain 2: VPC, EIPs, NACLs, SGs
+├── audit_logging_monitoring.sh   # Domain 3: CloudTrail, CloudWatch & CIS Alarms
+├── audit_storage_backup.sh       # Domain 4: S3 BPA, EBS unattached, AWS Backup
+├── audit_compute.sh              # Domain 5: EC2 Stale Stopped Instances
+├── audit_databases.sh            # Domain 6: RDS Deletion Protection & DynamoDB PITR
+├── audit_encryption_security.sh  # Domain 7: KMS, GuardDuty, Security Hub, ECR, ELB
+├── audit_security_groups.sh      # Security Group deep scanner & port analyzer
+├── cleanup_security_groups.sh    # Safe SG deletion with automated JSON backups
+├── restore_security_groups.sh    # Instant restoration from backup JSON or manifest
+├── consolidate_reports.py        # Multi-account report consolidator
+├── scripts/
+│   ├── prioritize_accounts.py    # Account risk concentration prioritization matrix
+│   └── setup_git_hooks.sh        # Git pre-commit & pre-push protection setup
+├── controls/
+│   ├── scps/                     # AWS Organization Service Control Policies (SCPs)
+│   │   ├── scp_guardrail_s3.json
+│   │   ├── scp_guardrail_logging_integrity.json
+│   │   ├── scp_guardrail_encryption.json
+│   │   ├── scp_guardrail_iam_root.json
+│   │   └── scp_guardrail_network.json
+│   └── config_rules/             # AWS Config Conformance Pack
+│       └── conformance_pack_security_baseline.yaml
 ├── lib/
 │   ├── common.sh                 # Shared auth, assume-role, logging, prerequisites
-│   ├── threat_engine.sh          # Threat analysis bash coordinator
+│   ├── compliance_engine.py      # Core 170+ rule evaluator with Zero-Impact logic
+│   ├── compliance_reporter.py    # Compliance HTML dashboard generator
+│   ├── threat_engine.sh          # Security group threat analyzer bash coordinator
 │   ├── threat_analyzer.py        # Threat risk scoring & port evaluation engine
-│   └── html_generator.sh         # Single-file HTML dashboard builder
+│   └── html_generator.sh         # Security group HTML generator
 ├── templates/
-│   └── report_template.html      # Responsive HTML5/CSS3/JS audit dashboard template
+│   ├── compliance_template.html  # Modern single-file compliance dashboard template
+│   └── report_template.html      # Security group audit report template
 └── test/
-    ├── run_tests.sh              # Automated test suite
-    ├── mock_sgs.json             # Test dataset with realistic threat scenarios
-    ├── mock_enis.json            # Test network interfaces dataset
+    ├── run_tests.sh              # Automated 9-phase unit & integration test suite
+    ├── mock_sgs.json             # Security group test fixtures
+    ├── mock_enis.json            # ENI attachment test fixtures
+    ├── mock_compliance_*.json    # Compliance evaluation test fixtures
     └── mock_bin/                 # Mock testing shims
 ```

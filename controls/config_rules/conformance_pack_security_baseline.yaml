@@ -1,0 +1,277 @@
+################################################################################
+# AWS Config Conformance Pack: Enterprise Security Baseline & Continuous Compliance
+# Deploy across Organization:
+#   aws configservice put-organization-conformance-pack \
+#     --organization-conformance-pack-name OrgSecurityBaseline \
+#     --template-body file://conformance_pack_security_baseline.yaml
+# Deploy single account:
+#   aws configservice put-conformance-pack \
+#     --conformance-pack-name SecurityBaseline \
+#     --template-body file://conformance_pack_security_baseline.yaml
+################################################################################
+Parameters: {}
+
+Resources:
+  # --- IAM & Governance ---
+  IamPasswordPolicy:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-password-policy
+      Description: Checks whether the account password policy meets enterprise complexity requirements.
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_PASSWORD_POLICY
+      InputParameters:
+        RequireUppercaseCharacters: "true"
+        RequireLowercaseCharacters: "true"
+        RequireSymbols: "true"
+        RequireNumbers: "true"
+        MinimumPasswordLength: "14"
+        PasswordReusePrevention: "24"
+        MaxPasswordAge: "90"
+
+  RootAccountMFAEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: root-account-mfa-enabled
+      Description: Checks whether the root user has MFA enabled.
+      Source:
+        Owner: AWS
+        SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED
+
+  IamUserMfaEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-user-mfa-enabled
+      Description: Checks whether IAM users with console passwords have MFA enabled.
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_USER_MFA_ENABLED
+
+  IamUserGroupMembershipCheck:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-user-group-membership-check
+      Description: Checks whether IAM users are members of at least one IAM group.
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_USER_GROUP_MEMBERSHIP_CHECK
+
+  # --- Network & Perimeter Security ---
+  VpcFlowLogsEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: vpc-flow-logs-enabled
+      Description: Checks whether Amazon VPC Flow Logs are enabled for all VPCs.
+      Source:
+        Owner: AWS
+        SourceIdentifier: VPC_FLOW_LOGS_ENABLED
+
+  VpcDefaultSecurityGroupClosed:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: vpc-default-security-group-closed
+      Description: Checks whether the default security group of any VPC has no inbound or outbound traffic rules.
+      Source:
+        Owner: AWS
+        SourceIdentifier: VPC_DEFAULT_SECURITY_GROUP_CLOSED
+
+  RestrictedSsh:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: restricted-ssh
+      Description: Checks whether security groups reject unrestricted incoming SSH traffic (port 22).
+      Source:
+        Owner: AWS
+        SourceIdentifier: INCOMING_SSH_DISABLED
+
+  RestrictedCommonPorts:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: restricted-common-ports
+      Description: Checks whether security groups reject unrestricted incoming traffic on sensitive ports.
+      Source:
+        Owner: AWS
+        SourceIdentifier: RESTRICTED_INCOMING_TRAFFIC
+      InputParameters:
+        blockedPort1: "3389"
+        blockedPort2: "3306"
+        blockedPort3: "5432"
+        blockedPort4: "1433"
+        blockedPort5: "1521"
+
+  EipAttached:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: eip-attached
+      Description: Checks whether all Elastic IP addresses allocated to an account are attached. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: EIP_ATTACHED
+
+  # --- Logging & Monitoring ---
+  CloudTrailEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: cloudtrail-enabled
+      Description: Checks whether AWS CloudTrail is active in the current region.
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_ENABLED
+
+  CloudTrailLogFileValidation:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: cloud-trail-log-file-validation-enabled
+      Description: Checks whether CloudTrail log file validation is enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_LOG_FILE_VALIDATION_ENABLED
+
+  CloudTrailEncryptionEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: cloud-trail-encryption-enabled
+      Description: Checks whether CloudTrail trails are configured to use KMS CMK encryption.
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_ENCRYPTION_ENABLED
+
+  # --- Storage & Backup ---
+  S3AccountLevelPublicAccessBlocks:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-account-level-public-access-blocks
+      Description: Checks whether S3 Block Public Access is enabled at the account level. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS
+
+  S3BucketSslRequestsOnly:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-bucket-ssl-requests-only
+      Description: Checks whether S3 buckets require requests to use HTTPS / TLS.
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_SSL_REQUESTS_ONLY
+
+  S3BucketVersioningEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-bucket-versioning-enabled
+      Description: Checks whether versioning is enabled for S3 buckets. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_VERSIONING_ENABLED
+
+  Ec2VolumeInUseCheck:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-volume-inuse-check
+      Description: Checks whether EBS volumes are attached to EC2 instances. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_VOLUME_INUSE_CHECK
+
+  Ec2EbsEncryptionByDefault:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-ebs-encryption-by-default
+      Description: Checks whether EBS default encryption is enabled in each region. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_EBS_ENCRYPTION_BY_DEFAULT
+
+  # --- Compute ---
+  Ec2StoppedInstanceCheck:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-stopped-instance-check
+      Description: Checks whether EC2 instances have been stopped for more than 30 days. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_STOPPED_INSTANCE_30_DAYS
+
+  # --- Databases ---
+  RdsInstanceDeletionProtectionEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: rds-instance-deletion-protection-enabled
+      Description: Checks whether RDS instances have deletion protection enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: RDS_INSTANCE_DELETION_PROTECTION_ENABLED
+
+  RdsStorageEncrypted:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: rds-storage-encrypted
+      Description: Checks whether storage encryption is enabled for your RDS DB instances.
+      Source:
+        Owner: AWS
+        SourceIdentifier: RDS_STORAGE_ENCRYPTED
+
+  DynamoDBPitrEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: dynamodb-pitr-enabled
+      Description: Checks whether Point-In-Time Recovery (PITR) is enabled for DynamoDB tables. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: DYNAMODB_PITR_ENABLED
+
+  # --- Encryption & Security Hub ---
+  CmkBackingKeyRotationEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: cmk-backing-key-rotation-enabled
+      Description: Checks whether KMS customer master keys have annual rotation enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: CMK_BACKING_KEY_ROTATION_ENABLED
+
+  GuardDutyEnabledCentralized:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: guardduty-enabled-centralized
+      Description: Checks whether Amazon GuardDuty is enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: GUARDDUTY_ENABLED_CENTRALIZED
+
+  SecurityHubEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: securityhub-enabled
+      Description: Checks whether AWS Security Hub is enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: SECURITYHUB_ENABLED
+
+  EcrPrivateImageScanningEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ecr-private-image-scanning-enabled
+      Description: Checks whether private ECR repositories are configured for scan on push. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: ECR_PRIVATE_IMAGE_SCANNING_ENABLED
+
+  EcrPrivateTagImmutabilityEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ecr-private-tag-immutability-enabled
+      Description: Checks whether private ECR repositories have tag immutability enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: ECR_PRIVATE_TAG_IMMUTABILITY_ENABLED
+
+  ElbDeletionProtectionEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: elb-deletion-protection-enabled
+      Description: Checks whether Application/Network Load Balancers have deletion protection enabled. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: ELBV2_DELETION_PROTECTION_ENABLED
