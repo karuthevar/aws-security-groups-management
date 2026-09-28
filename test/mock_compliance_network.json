@@ -1,0 +1,42 @@
+{
+  "vpcs": [
+    {
+      "VpcId": "vpc-0123456789abcdef0",
+      "FlowLogsEnabled": false
+    }
+  ],
+  "elastic_ips": [
+    {
+      "AllocationId": "eipalloc-11111111",
+      "AssociationId": null
+    }
+  ],
+  "nacls": [
+    {
+      "NetworkAclId": "acl-11111111",
+      "IsDefault": true,
+      "Associations": [
+        {
+          "SubnetId": "subnet-111111"
+        }
+      ]
+    }
+  ],
+  "security_groups": [],
+  "transit_gateways": [
+    {
+      "TransitGatewayId": "tgw-0123456789abcdef0",
+      "Name": "Global-Transit-Hub",
+      "Options": {
+        "AutoAcceptSharedAttachments": "enable"
+      }
+    },
+    {
+      "TransitGatewayId": "tgw-09999999999999999",
+      "Name": "Compliant-Transit-Hub",
+      "Options": {
+        "AutoAcceptSharedAttachments": "disable"
+      }
+    }
+  ]
+}

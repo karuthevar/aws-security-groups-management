@@ -48,6 +48,24 @@
           "ec2:Protocol": "-1"
         }
       }
+    },
+    {
+      "Sid": "DenyUnapprovedTransitGatewayModification",
+      "Effect": "Deny",
+      "Action": [
+        "ec2:ModifyTransitGateway",
+        "ec2:CreateTransitGateway"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/OrganizationAccountAccessRole",
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/*NetworkAdmin*"
+          ]
+        }
+      }
     }
   ]
 }

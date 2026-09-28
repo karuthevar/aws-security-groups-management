@@ -130,13 +130,18 @@ for (( i=0; i<ACCOUNT_COUNT; i++ )); do
         SGS=$(aws ec2 describe-security-groups --region "${REGION}" --query 'SecurityGroups[].[GroupId,GroupName,IpPermissions]' --output json 2>/dev/null || echo "[]")
         FORMATTED_SGS=$(echo "${SGS}" | jq '[.[] | {GroupId: .[0], GroupName: .[1], IpPermissions: .[2]}]' 2>/dev/null || echo "[]")
 
+        # 5. Transit Gateways
+        TGWS=$(aws ec2 describe-transit-gateways --region "${REGION}" --query 'TransitGateways[].[TransitGatewayId,Tags[?Key==`Name`].Value | [0],Options.AutoAcceptSharedAttachments]' --output json 2>/dev/null || echo "[]")
+        FORMATTED_TGWS=$(echo "${TGWS}" | jq '[.[] | {TransitGatewayId: .[0], Name: .[1], Options: {AutoAcceptSharedAttachments: .[2]}}]' 2>/dev/null || echo "[]")
+
         RAW_REG_FILE="${RAW_TEMP_DIR}/${ACCOUNT_ID}_${REGION}_net.json"
         jq -n \
             --argjson vpcs "$ENRICHED_VPCS" \
             --argjson eips "$FORMATTED_EIPS" \
             --argjson nacls "$FORMATTED_NACLS" \
             --argjson sgs "$FORMATTED_SGS" \
-            '{vpcs: $vpcs, elastic_ips: $eips, nacls: $nacls, security_groups: $sgs}' > "${RAW_REG_FILE}"
+            --argjson tgws "$FORMATTED_TGWS" \
+            '{vpcs: $vpcs, elastic_ips: $eips, nacls: $nacls, security_groups: $sgs, transit_gateways: $tgws}' > "${RAW_REG_FILE}"
 
         FINDINGS=$(${PYTHON_BIN:-python3} "${SCRIPT_DIR}/lib/compliance_engine.py" network "${RAW_REG_FILE}" "${ACCOUNT_ID}" "${ACCOUNT_NAME}" "${REGION}" 2>/dev/null || echo "[]")
         ALL_FINDINGS=$(echo "${ALL_FINDINGS}" "${FINDINGS}" | jq -s '.[0] + .[1]')

@@ -109,6 +109,15 @@ Resources:
         Owner: AWS
         SourceIdentifier: EIP_ATTACHED
 
+  TransitGatewayAutoApprovalCheck:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: transit-gateway-auto-approval-check
+      Description: Checks whether Transit Gateways have AutoAcceptSharedAttachments disabled to prevent unauthorized cross-account attachments. (Zero Impact Quick Win)
+      Source:
+        Owner: AWS
+        SourceIdentifier: TRANSIT_GATEWAY_AUTO_APPROVAL_CHECK
+
   # --- Logging & Monitoring ---
   CloudTrailEnabled:
     Type: AWS::Config::ConfigRule

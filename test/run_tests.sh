@@ -110,10 +110,11 @@ echo "[TEST 6] Testing restore_security_groups.sh..."
 echo "✓ Test 6 Passed: Restoration completed successfully."
 
 echo ""
-echo "[TEST 7] Testing compliance engine against IAM, Storage, and Database mock fixtures..."
+echo "[TEST 7] Testing compliance engine against IAM, Storage, Database, and Network mock fixtures..."
 python lib/compliance_engine.py iam test/mock_compliance_iam.json "111122223333" "Production" "global" > test/test_compliance_iam.json
 python lib/compliance_engine.py storage test/mock_compliance_storage.json "111122223333" "Production" "us-east-1" > test/test_compliance_storage.json
 python lib/compliance_engine.py database test/mock_compliance_databases.json "111122223333" "Production" "us-east-1" > test/test_compliance_databases.json
+python lib/compliance_engine.py network test/mock_compliance_network.json "111122223333" "Production" "us-east-1" > test/test_compliance_network.json
 
 python -c "
 import json
@@ -132,7 +133,14 @@ with open('test/test_compliance_databases.json') as f:
 assert any(x['RuleId'] == 'RDS_DELETION_PROTECTION_ENABLED' for x in db), 'Missing RDS deletion protection check'
 assert any(x['RuleId'] == 'DYNAMODB_PITR_ENABLED' for x in db), 'Missing DynamoDB PITR check'
 
-print('[PASS] Compliance evaluation engine validated across IAM, Storage, and Databases!')
+with open('test/test_compliance_network.json') as f:
+    net = json.load(f)
+assert any(x['RuleId'] == 'TGW_AUTO_ACCEPT_SHARED_ATTACHMENTS_DISABLED' for x in net), 'Missing TGW Auto-Accept check'
+tgw_finding = next(x for x in net if x['RuleId'] == 'TGW_AUTO_ACCEPT_SHARED_ATTACHMENTS_DISABLED')
+assert tgw_finding['RemediationImpact'] == 'ZERO_IMPACT_QUICK_WIN', 'TGW Auto-Accept must be ZERO_IMPACT_QUICK_WIN'
+assert tgw_finding['ResourceId'] == 'tgw-0123456789abcdef0', 'Should flag non-compliant TGW'
+
+print('[PASS] Compliance evaluation engine validated across IAM, Storage, Databases, and Network (TGW)!')
 "
 echo "✓ Test 7 Passed: Compliance engine evaluations verified."
 

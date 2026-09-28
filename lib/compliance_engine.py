@@ -302,6 +302,25 @@ def evaluate_network_domain(data: Dict[str, Any], account_id: str, account_name:
                             "Restricting to corporate VPN or bastion CIDR eliminates brute-force threats immediately."
                         ))
 
+    # 6. Transit Gateway Auto Cross-Account Attachment Disabled (Zero Impact Quick Win!)
+    tgws = data.get("transit_gateways", [])
+    for tgw in tgws:
+        tgw_id = tgw.get("TransitGatewayId")
+        tgw_name = tgw.get("Name", tgw_id)
+        auto_accept = tgw.get("Options", {}).get("AutoAcceptSharedAttachments", "disable")
+        if auto_accept == "enable":
+            findings.append(make_finding(
+                account_id, account_name, region, "Network",
+                "TGW_AUTO_ACCEPT_SHARED_ATTACHMENTS_DISABLED", "EC2 Transit Gateway Auto Cross-Account Attachment Disabled",
+                "HIGH", "NON_COMPLIANT", tgw_id, "AWS::EC2::TransitGateway",
+                f"Transit Gateway {tgw_id} ('{tgw_name}') has AutoAcceptSharedAttachments enabled. External shared accounts can attach arbitrary VPCs without administrator approval.",
+                IMPACT_ZERO_WIN,
+                f"aws ec2 modify-transit-gateway --transit-gateway-id {tgw_id} --options AutoAcceptSharedAttachments=disable --region {region}",
+                "AWS Config: transit-gateway-auto-approval-check",
+                "SCP: DenyEnableTransitGatewayAutoAccept",
+                "100% Zero Workload Downtime. Disabling auto-acceptance does not affect existing attachments or active traffic; it simply requires future cross-account attachments to be explicitly approved."
+            ))
+
     return findings
 
 def evaluate_logging_monitoring_domain(data: Dict[str, Any], account_id: str, account_name: str, region: str) -> List[Dict[str, Any]]:
