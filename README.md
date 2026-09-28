@@ -319,6 +319,30 @@ All interactive HTML reports (`security_audit_report.html`, `enterprise_complian
 
 ---
 
+## 🌐 Executive Leadership Portal (Mini-Website)
+
+A polished, standalone executive portal designed specifically for presenting security audit findings, account concentrations, and strategic implementation roadmaps to leadership and engineering stakeholders.
+
+### 🌟 Key Leadership Views:
+- **Strategic Implementation Matrix (Complexity vs. Impact)**: Visual 2x2 matrix highlighting Quadrant 1 Zero-Impact Quick Wins.
+- **4-Phase Implementation Roadmap**: Structured calendar timelines with downtime indicators (`100% Zero Downtime`).
+- **Account Concentration Breakdown**: Interactive table mapping risk density across `908140080081`, `191952776710`, `679414842598`, and `599434579961`.
+- **Live Findings Explorer**: Fast filterable search of all 1,336 checks with CLI copy-paste modal dialogs.
+- **Print / PDF Briefing Mode**: Built-in executive slide & PDF printable format with one click.
+
+### 🚀 How to Launch on Your Local Laptop:
+- **Option 1 (One-Click Windows Launcher)**: Double-click [`launch_portal.bat`](launch_portal.bat) in the project root.
+- **Option 2 (PowerShell)**: Run `.\launch_portal.ps1`
+- **Option 3 (Local Web Server)**: Run `python portal/serve.py` (opens `http://localhost:8080`)
+- **Option 4 (Direct Browser Open)**: Double-click [`portal/index.html`](portal/index.html) in your file explorer.
+
+To rebuild or refresh the portal with newly downloaded reports at any time:
+```bash
+python scripts/build_executive_portal.py
+```
+
+---
+
 ## 🧪 Automated Test Suite
 
 A built-in test runner verifies threat risk scoring, attachment detection, compliance evaluations, HTML report generators, and SCP syntax:
