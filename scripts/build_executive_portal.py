@@ -4,11 +4,11 @@ AWS Enterprise Executive Portal Builder
 Generates a standalone, leadership-grade HTML portal illustrating current security findings,
 strategic implementation order based on complexity vs. impact, account concentration,
 interactive findings drill-down, and continuous guardrails.
+NO TIMELINES - Strictly prioritized by Complexity, Downtime Impact, and Risk Reduction.
 """
 
 import os
 import json
-import datetime
 from collections import Counter, defaultdict
 
 def build_portal():
@@ -50,7 +50,7 @@ def build_portal():
 
     sorted_accounts = sorted(accounts_data.items(), key=lambda x: x[1]["total"], reverse=True)
 
-    # Compact JSON for findings explorer (strip redundant text to keep payload snappy)
+    # Compact JSON for findings explorer
     compact_findings = []
     for f in findings:
         compact_findings.append({
@@ -390,14 +390,14 @@ def build_portal():
         .item-content strong {{ color: var(--text-main); }}
         .item-content p {{ color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }}
 
-        /* 4-Phase Roadmap Cards */
-        .roadmap-timeline {{
+        /* Implementation Order Cards */
+        .order-container {{
             display: flex;
             flex-direction: column;
             gap: 20px;
             margin-bottom: 40px;
         }}
-        .phase-card {{
+        .order-card {{
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
@@ -409,31 +409,31 @@ def build_portal():
             box-shadow: var(--shadow-card);
             transition: transform 0.2s;
         }}
-        .phase-card:hover {{ transform: translateX(4px); }}
-        .phase-badge {{ text-align: center; }}
-        .phase-num {{
+        .order-card:hover {{ transform: translateX(4px); }}
+        .order-badge {{ text-align: center; }}
+        .order-num {{
             font-size: 1.7rem;
             font-weight: 900;
             line-height: 1;
         }}
-        .phase-card.p1 .phase-num {{ color: var(--accent-red); }}
-        .phase-card.p2 .phase-num {{ color: var(--accent-cyan); }}
-        .phase-card.p3 .phase-num {{ color: var(--accent-blue); }}
-        .phase-card.p4 .phase-num {{ color: var(--accent-purple); }}
+        .order-card.tier1 .order-num {{ color: var(--accent-red); }}
+        .order-card.tier2 .order-num {{ color: var(--accent-cyan); }}
+        .order-card.tier3 .order-num {{ color: var(--accent-blue); }}
+        .order-card.tier4 .order-num {{ color: var(--accent-purple); }}
 
-        .phase-label {{
+        .order-label {{
             font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
             color: var(--text-dim);
             margin-top: 4px;
         }}
-        .phase-info h3 {{
+        .order-info h3 {{
             font-size: 1.15rem;
             font-weight: 700;
             margin-bottom: 6px;
         }}
-        .phase-meta {{
+        .order-meta {{
             display: flex;
             flex-wrap: wrap;
             gap: 16px;
@@ -450,11 +450,11 @@ def build_portal():
             color: var(--accent-green);
             font-weight: 600;
         }}
-        .phase-details {{
+        .order-details {{
             font-size: 0.85rem;
             color: var(--text-muted);
         }}
-        .phase-cta {{ text-align: right; }}
+        .order-cta {{ text-align: right; }}
 
         /* Account Table */
         .account-table-wrap {{
@@ -578,13 +578,13 @@ def build_portal():
             body {{ background: #fff !important; color: #000 !important; }}
             .container {{ max-width: 100% !important; padding: 0 !important; }}
             .matrix-grid, .kpi-grid {{ gap: 8px !important; }}
-            .kpi-card, .matrix-quadrant, .phase-card {{ border: 1px solid #ccc !important; box-shadow: none !important; }}
+            .kpi-card, .matrix-quadrant, .order-card {{ border: 1px solid #ccc !important; box-shadow: none !important; }}
         }}
 
         @media (max-width: 768px) {{
             .matrix-grid {{ grid-template-columns: 1fr; }}
-            .phase-card {{ grid-template-columns: 1fr; text-align: left; }}
-            .phase-cta {{ text-align: left; }}
+            .order-card {{ grid-template-columns: 1fr; text-align: left; }}
+            .order-cta {{ text-align: left; }}
         }}
     </style>
 </head>
@@ -602,7 +602,7 @@ def build_portal():
         <ul class="nav-links">
             <li><a href="#summary">Overview</a></li>
             <li><a href="#matrix">Impact Matrix</a></li>
-            <li><a href="#roadmap">Implementation Order</a></li>
+            <li><a href="#order">Implementation Order</a></li>
             <li><a href="#accounts">Account Breakdown</a></li>
             <li><a href="#explorer">Live Findings</a></li>
             <li><a href="#guardrails">Prevention (SCPs)</a></li>
@@ -617,7 +617,7 @@ def build_portal():
 
         <!-- Executive Hero Header -->
         <section class="hero" id="summary">
-            <div class="hero-badge">Executive Security Briefing • September 2026</div>
+            <div class="hero-badge">Executive Security Briefing • Current Assessment</div>
             <h1 class="hero-title">Cloud Infrastructure Security & Remediation Roadmap</h1>
             <p class="hero-desc">
                 Comprehensive security evaluation conducted across 4 AWS Organization accounts. 
@@ -666,7 +666,7 @@ def build_portal():
         <div class="matrix-grid">
             <!-- Q1: High Impact, Low Complexity (DO FIRST) -->
             <div class="matrix-quadrant" style="border-top: 4px solid var(--accent-cyan);">
-                <span class="quadrant-tag tag-q1">Quadrant 1 • Execute Immediately (Low Complexity / High Impact)</span>
+                <span class="quadrant-tag tag-q1">Quadrant 1 • Execute First (Low Complexity / High Impact)</span>
                 <div class="quadrant-title">Zero-Impact Quick Wins</div>
                 <p class="quadrant-desc">Highest ROI actions. 0 downtime on running workloads. Safe metadata flags and unused resource isolations.</p>
                 <ul class="quadrant-items">
@@ -701,9 +701,9 @@ def build_portal():
                 </ul>
             </div>
 
-            <!-- Q2: High Impact, Medium Complexity (PHASE 2) -->
+            <!-- Q2: High Impact, Medium Complexity -->
             <div class="matrix-quadrant" style="border-top: 4px solid var(--accent-blue);">
-                <span class="quadrant-tag tag-q2">Quadrant 2 • Phase 2 Focus (Medium Complexity / High Impact)</span>
+                <span class="quadrant-tag tag-q2">Quadrant 2 • Core Security (Medium Complexity / High Impact)</span>
                 <div class="quadrant-title">Foundational Network & Data Security</div>
                 <p class="quadrant-desc">Requires targeted policy updates and traffic telemetry deployment across cloud environments.</p>
                 <ul class="quadrant-items">
@@ -731,7 +731,7 @@ def build_portal():
                 </ul>
             </div>
 
-            <!-- Q3: Low Complexity, Medium Impact (PHASE 3) -->
+            <!-- Q3: Low Complexity, Medium Impact -->
             <div class="matrix-quadrant" style="border-top: 4px solid var(--accent-amber);">
                 <span class="quadrant-tag tag-q3">Quadrant 3 • Operational Hygiene (Low Complexity / Medium Impact)</span>
                 <div class="quadrant-title">Governance & Storage Hygiene</div>
@@ -761,7 +761,7 @@ def build_portal():
                 </ul>
             </div>
 
-            <!-- Q4: Strategic Prevention (PHASE 4) -->
+            <!-- Q4: Strategic Prevention -->
             <div class="matrix-quadrant" style="border-top: 4px solid var(--accent-purple);">
                 <span class="quadrant-tag tag-q4">Quadrant 4 • Permanent Lockdown (Strategic Guardrails)</span>
                 <div class="quadrant-title">Continuous Prevention & Detection</div>
@@ -785,99 +785,104 @@ def build_portal():
             </div>
         </div>
 
-        <!-- Section 2: 4-Phase Executive Implementation Roadmap -->
-        <div class="section-header" id="roadmap">
+        <!-- Section 2: Order of Implementation Based on Complexity & Impact -->
+        <div class="section-header" id="order">
             <div>
-                <h2>Executive Implementation Roadmap</h2>
-                <p>Structured, four-phase plan delivering maximum security gains in minimum calendar time.</p>
+                <h2>Order of Implementation (Based on Complexity & Impact)</h2>
+                <p>Structured implementation sequence prioritized strictly by operational complexity, workload downtime impact, and security posture uplift.</p>
             </div>
+            <span class="hero-badge">Priority Principle: Zero-Downtime High-Impact First</span>
         </div>
 
-        <div class="roadmap-timeline">
-            <!-- Phase 1 -->
-            <div class="phase-card p1">
-                <div class="phase-badge">
-                    <div class="phase-num">01</div>
-                    <div class="phase-label">Phase 1</div>
+        <div class="order-container">
+            <!-- Tier 1 -->
+            <div class="order-card tier1">
+                <div class="order-badge">
+                    <div class="order-num">01</div>
+                    <div class="order-label">Stage 01</div>
                 </div>
-                <div class="phase-info">
-                    <h3>Critical Perimeter Lockdown: Account-Level S3 BPA</h3>
-                    <div class="phase-meta">
-                        <span class="meta-pill">⏱️ Execution Time: <strong>10 Minutes</strong></span>
-                        <span class="meta-pill safe">⚡ Impact: <strong>100% Zero Downtime</strong></span>
+                <div class="order-info">
+                    <h3>Critical Perimeter Shield: Account-Level S3 BPA</h3>
+                    <div class="order-meta">
+                        <span class="meta-pill">🔧 Complexity: <strong>Minimal (1 Action per Root)</strong></span>
+                        <span class="meta-pill safe">⚡ Downtime: <strong>100% Zero Workload Impact</strong></span>
+                        <span class="meta-pill" style="color:var(--accent-red);">🛡️ Risk Impact: <strong>Critical Risk Elimination</strong></span>
                         <span class="meta-pill">🎯 Scope: <strong>Accounts 679414842598 & 908140080081</strong></span>
                     </div>
-                    <p class="phase-details">
+                    <p class="order-details">
                         Closes the 2 Critical audit findings. Applies universal S3 Account Public Access Block to ensure no current or future S3 bucket can ever be inadvertently exposed to the internet.
                     </p>
                 </div>
-                <div class="phase-cta">
+                <div class="order-cta">
                     <button class="btn btn-outline" onclick="showRemediation('p0')">View CLI Commands</button>
                 </div>
             </div>
 
-            <!-- Phase 2 -->
-            <div class="phase-card p2">
-                <div class="phase-badge">
-                    <div class="phase-num">02</div>
-                    <div class="phase-label">Phase 2</div>
+            <!-- Tier 2 -->
+            <div class="order-card tier2">
+                <div class="order-badge">
+                    <div class="order-num">02</div>
+                    <div class="order-label">Stage 02</div>
                 </div>
-                <div class="phase-info">
+                <div class="order-info">
                     <h3>Zero-Impact Quick Wins Campaign (248 Actions)</h3>
-                    <div class="phase-meta">
-                        <span class="meta-pill">⏱️ Execution Time: <strong>2-3 Days</strong></span>
-                        <span class="meta-pill safe">⚡ Impact: <strong>100% Zero Downtime</strong></span>
+                    <div class="order-meta">
+                        <span class="meta-pill">🔧 Complexity: <strong>Low (Automated Scriptable)</strong></span>
+                        <span class="meta-pill safe">⚡ Downtime: <strong>100% Zero Workload Impact</strong></span>
+                        <span class="meta-pill" style="color:var(--accent-cyan);">🛡️ Risk Impact: <strong>18.6% Immediate Posture Lift</strong></span>
                         <span class="meta-pill">🎯 Scope: <strong>All 4 Accounts</strong></span>
                     </div>
-                    <p class="phase-details">
+                    <p class="order-details">
                         Revokes inbound rules on 30 Default Security Groups, activates EBS Default Encryption across 70 regions, enables S3 Versioning on 106 buckets, and aligns IAM Password Policies.
                     </p>
                 </div>
-                <div class="phase-cta">
+                <div class="order-cta">
                     <button class="btn btn-outline" onclick="showRemediation('p1')">View CLI Commands</button>
                 </div>
             </div>
 
-            <!-- Phase 3 -->
-            <div class="phase-card p3">
-                <div class="phase-badge">
-                    <div class="phase-num">03</div>
-                    <div class="phase-label">Phase 3</div>
+            <!-- Tier 3 -->
+            <div class="order-card tier3">
+                <div class="order-badge">
+                    <div class="order-num">03</div>
+                    <div class="order-label">Stage 03</div>
                 </div>
-                <div class="phase-info">
+                <div class="order-info">
                     <h3>Foundational Telemetry & In-Transit Encryption</h3>
-                    <div class="phase-meta">
-                        <span class="meta-pill">⏱️ Execution Time: <strong>1 Week</strong></span>
-                        <span class="meta-pill safe">⚡ Impact: <strong>Low / Non-breaking</strong></span>
+                    <div class="order-meta">
+                        <span class="meta-pill">🔧 Complexity: <strong>Moderate (Policy Configuration)</strong></span>
+                        <span class="meta-pill safe">⚡ Downtime: <strong>Non-Breaking Configuration</strong></span>
+                        <span class="meta-pill" style="color:var(--accent-blue);">🛡️ Risk Impact: <strong>Complete Traffic Telemetry</strong></span>
                         <span class="meta-pill">🎯 Scope: <strong>All 4 Accounts</strong></span>
                     </div>
-                    <p class="phase-details">
+                    <p class="order-details">
                         Enforces TLS/HTTPS bucket policies across 142 S3 buckets, activates VPC Flow Logs across 28 VPCs, and provisions 840 CIS CloudWatch metric filters and alarm subscriptions.
                     </p>
                 </div>
-                <div class="phase-cta">
+                <div class="order-cta">
                     <button class="btn btn-outline" onclick="showRemediation('p2')">View Telemetry Plan</button>
                 </div>
             </div>
 
-            <!-- Phase 4 -->
-            <div class="phase-card p4">
-                <div class="phase-badge">
-                    <div class="phase-num">04</div>
-                    <div class="phase-label">Phase 4</div>
+            <!-- Tier 4 -->
+            <div class="order-card tier4">
+                <div class="order-badge">
+                    <div class="order-num">04</div>
+                    <div class="order-label">Stage 04</div>
                 </div>
-                <div class="phase-info">
+                <div class="order-info">
                     <h3>Enterprise Guardrails & Continuous Compliance (SCPs)</h3>
-                    <div class="phase-meta">
-                        <span class="meta-pill">⏱️ Execution Time: <strong>1 Week</strong></span>
-                        <span class="meta-pill safe">⚡ Impact: <strong>Zero Regression</strong></span>
+                    <div class="order-meta">
+                        <span class="meta-pill">🔧 Complexity: <strong>Low-Moderate (Org Policy Attachment)</strong></span>
+                        <span class="meta-pill safe">⚡ Downtime: <strong>Zero Service Interruption</strong></span>
+                        <span class="meta-pill" style="color:var(--accent-purple);">🛡️ Risk Impact: <strong>100% Regression Prevention</strong></span>
                         <span class="meta-pill">🎯 Scope: <strong>AWS Organizations Root</strong></span>
                     </div>
-                    <p class="phase-details">
+                    <p class="order-details">
                         Deploys Service Control Policies to the Organization Root to block non-compliant resource creation permanently, and activates AWS Config Conformance Pack for continuous automated audit reporting.
                     </p>
                 </div>
-                <div class="phase-cta">
+                <div class="order-cta">
                     <button class="btn btn-outline" onclick="showRemediation('p3')">View SCP Policies</button>
                 </div>
             </div>
@@ -1058,25 +1063,25 @@ def build_portal():
 
         const REM_DATA = {{
             p0: {{
-                title: "Phase 1: Critical S3 Block Public Access (P0)",
-                desc: "Run immediately across Management accounts. 100% Zero Downtime. Protects all current and future S3 buckets from accidental public leaks.",
+                title: "Stage 01: Critical S3 Block Public Access (P0)",
+                desc: "Executes across Management accounts. 100% Zero Downtime. Protects all current and future S3 buckets from accidental public leaks.",
                 rationale: "Zero workload downtime. Universal safety net preventing 100% of accidental bucket leaks across the entire account.",
                 cli: `# Apply to Account 679414842598\\naws s3control put-public-access-block --account-id 679414842598 --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true\\n\\n# Apply to Account 908140080081\\naws s3control put-public-access-block --account-id 908140080081 --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true`
             }},
             p1: {{
-                title: "Phase 2: Zero-Impact Quick Wins (248 Actions)",
+                title: "Stage 02: Zero-Impact Quick Wins (248 Actions)",
                 desc: "Executes 100% safe isolations and security toggles with zero downtime on running workloads.",
                 rationale: "Default SGs cannot be deleted; revoking ingress isolates them cleanly. EBS default encryption transparently protects future volumes with zero disruption.",
                 cli: `# 1. Enable EBS Default Encryption across all active regions\\nfor reg in us-east-1 us-east-2 us-west-1 us-west-2 eu-west-1 eu-central-1 ap-northeast-1; do\\n  aws ec2 enable-ebs-encryption-by-default --region $reg\\ndone\\n\\n# 2. Revoke default Security Group ingress rules (Isolates default SGs)\\naws ec2 revoke-security-group-ingress --group-id <default_sg_id> --protocol -1 --port -1 --source-group <default_sg_id> --region <region>\\n\\n# 3. Enforce IAM Enterprise Password Policy\\naws iam update-account-password-policy --minimum-password-length 14 --require-symbols --require-numbers --require-uppercase-characters --require-lowercase-characters --max-password-age 90 --password-reuse-prevention 24`
             }},
             p2: {{
-                title: "Phase 3: Telemetry & In-Transit Encryption",
+                title: "Stage 03: Telemetry & In-Transit Encryption",
                 desc: "Safe configuration of VPC Flow Logs and TLS bucket policies without interrupting traffic.",
                 rationale: "Enables continuous network packet forensics and guarantees all object transfers use cryptographic TLS tunnels.",
                 cli: `# 1. Enable VPC Flow Logs for network traffic visibility\\naws ec2 create-flow-logs --resource-type VPC --resource-ids <vpc_id> --traffic-type ALL --log-destination-type cloud-watch-logs --log-group-name /aws/vpc/flow-logs/<vpc_id>\\n\\n# 2. Attach Deny-Non-SSL S3 Bucket Policy\\naws s3api put-bucket-policy --bucket <bucket_name> --policy file://deny_non_ssl_policy.json`
             }},
             p3: {{
-                title: "Phase 4: Continuous Guardrails & SCP Deployment",
+                title: "Stage 04: Continuous Guardrails & SCP Deployment",
                 desc: "Deploy organization guardrails to permanently eliminate security regressions.",
                 rationale: "Automated continuous guardrails ensure security gains are locked in permanently and block shadow IT creation.",
                 cli: `# 1. Deploy AWS Organizations Service Control Policy\\naws organizations create-policy --name EnforceS3Security --type SERVICE_CONTROL_POLICY --content file://controls/scps/scp_guardrail_s3.json\\n\\n# 2. Deploy AWS Config Organization Conformance Pack\\naws configservice put-organization-conformance-pack --organization-conformance-pack-name EnterpriseSecurityBaseline --template-body file://controls/config_rules/conformance_pack_security_baseline.yaml`
@@ -1192,7 +1197,7 @@ def build_portal():
     with open(artifact_html, "w", encoding="utf-8") as f:
         f.write(html_template)
 
-    print(f"Executive Leadership Portal successfully generated:")
+    print(f"Executive Leadership Portal successfully regenerated without timelines:")
     print(f"  Local Workspace: {out_html}")
     print(f"  Artifact Copy:   {artifact_html}")
 

@@ -15,6 +15,7 @@ audit_results/
 audit_results/**
 *.html
 *.json
+*.pdf
 !test/mock_*.json
 !controls/**/*.json
 !templates/*.html

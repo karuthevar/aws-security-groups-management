@@ -325,7 +325,7 @@ A polished, standalone executive portal designed specifically for presenting sec
 
 ### 🌟 Key Leadership Views:
 - **Strategic Implementation Matrix (Complexity vs. Impact)**: Visual 2x2 matrix highlighting Quadrant 1 Zero-Impact Quick Wins.
-- **4-Phase Implementation Roadmap**: Structured calendar timelines with downtime indicators (`100% Zero Downtime`).
+- **Order of Implementation**: Structured sequence based on Operational Complexity, Workload Downtime Impact (`100% Zero Downtime`), and Posture Uplift.
 - **Account Concentration Breakdown**: Interactive table mapping risk density across `908140080081`, `191952776710`, `679414842598`, and `599434579961`.
 - **Live Findings Explorer**: Fast filterable search of all 1,336 checks with CLI copy-paste modal dialogs.
 - **Print / PDF Briefing Mode**: Built-in executive slide & PDF printable format with one click.
