@@ -55,6 +55,7 @@ import sys
 import csv
 import json
 import argparse
+import subprocess
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -754,26 +755,112 @@ def process_account_buckets(acc, management_account_id, candidate_roles, default
     return account_records
 
 
-def scan_single_organization(profile_or_session, args, candidate_roles, is_current_session=False):
+def get_session_for_profile(profile_name, is_current_session=False):
+    """
+    Acquires an authenticated boto3 Session using a resilient multi-tier cascade:
+    1. Native Boto3 session (reads environment variables, ~/.aws/credentials, ~/.aws/config).
+    2. AWS CLI v2 Credential Bridge ('aws configure export-credentials --profile <profile>'),
+       bridging temporary credentials from 'aws login' or IAM Identity Center / SSO directly into Boto3.
+    3. SSO Profile Fallback (checks for '<profile>-sso' in ~/.aws/config).
+    """
+    if is_current_session:
+        # Check native unprofiled session first
+        try:
+            session = boto3.Session()
+            sts = session.client("sts")
+            identity = sts.get_caller_identity()
+            return session, f"native_current:{identity['Account']}"
+        except Exception:
+            pass
+
+        # Check if AWS_PROFILE environment variable is defined in the terminal
+        env_profile = os.environ.get("AWS_PROFILE")
+        if env_profile:
+            sess, method = get_session_for_profile(env_profile, is_current_session=False)
+            if sess:
+                return sess, f"env_profile:{env_profile} ({method})"
+
+        return None, "no_active_current_credentials"
+
+    resolved_profile = resolve_profile_name(profile_name)
+
+    # Tier 1: Try native Boto3 with resolved profile
+    try:
+        session = boto3.Session(profile_name=resolved_profile)
+        sts = session.client("sts")
+        identity = sts.get_caller_identity()
+        return session, f"native_profile:{resolved_profile}"
+    except Exception:
+        pass
+
+    # Tier 2: Bridge credentials via AWS CLI v2 export-credentials
+    try:
+        cmd = ["aws", "configure", "export-credentials", "--profile", resolved_profile, "--format", "json"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if proc.returncode == 0 and proc.stdout.strip():
+            cred_data = json.loads(proc.stdout)
+            reg = "ca-central-1" if "cccs" in resolved_profile else "us-east-1"
+            session = boto3.Session(
+                aws_access_key_id=cred_data.get("AccessKeyId"),
+                aws_secret_access_key=cred_data.get("SecretAccessKey"),
+                aws_session_token=cred_data.get("SessionToken"),
+                region_name=reg,
+            )
+            return session, f"aws_cli_bridge:{resolved_profile}"
+    except Exception:
+        pass
+
+    # Tier 3: Check for SSO counterpart profile (e.g. rus-ext-sso)
+    sso_profile = f"{resolved_profile}-sso"
+    try:
+        session = boto3.Session(profile_name=sso_profile)
+        sts = session.client("sts")
+        identity = sts.get_caller_identity()
+        return session, f"sso_profile:{sso_profile}"
+    except Exception:
+        pass
+
+    # Tier 4: Bridge SSO profile via AWS CLI export-credentials
+    try:
+        cmd = ["aws", "configure", "export-credentials", "--profile", sso_profile, "--format", "json"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if proc.returncode == 0 and proc.stdout.strip():
+            cred_data = json.loads(proc.stdout)
+            reg = "ca-central-1" if "cccs" in sso_profile else "us-east-1"
+            session = boto3.Session(
+                aws_access_key_id=cred_data.get("AccessKeyId"),
+                aws_secret_access_key=cred_data.get("SecretAccessKey"),
+                aws_session_token=cred_data.get("SessionToken"),
+                region_name=reg,
+            )
+            return session, f"aws_cli_bridge_sso:{sso_profile}"
+    except Exception:
+        pass
+
+    return None, f"failed_all_methods:{resolved_profile}"
+
+
+def scan_single_organization(profile_or_session, args, candidate_roles, is_current_session=False, session=None):
     profile_name = "current" if is_current_session else profile_or_session
     safe_print("\n" + "=" * 80)
+    
+    auth_method = "pre_authenticated"
+    if session is None:
+        session, auth_method = get_session_for_profile(profile_name, is_current_session=is_current_session)
+
+    if session is None:
+        safe_print(f"[-] Authentication error for profile '{profile_name}': Unable to locate active credentials.")
+        safe_print(f"    Hint: Run 'aws login --profile {profile_name}' or 'aws sso login --profile {profile_name}'")
+        return []
+
     if is_current_session:
-        safe_print("Connecting to CURRENT Active AWS Session in PowerShell...")
-        session = boto3.Session()
+        safe_print(f"Connecting to CURRENT Active AWS Session in PowerShell [Auth: {auth_method}]...")
     else:
         resolved_profile = resolve_profile_name(profile_name)
-        safe_print(f"Connecting to AWS Profile: '{profile_name}'" + (f" (alias: {resolved_profile})" if resolved_profile != profile_name else "") + "...")
-        try:
-            session = boto3.Session(profile_name=resolved_profile)
-        except ProfileNotFound:
-            safe_print(f"[-] Profile '{profile_name}' not found in ~/.aws/config or ~/.aws/credentials. Skipping.")
-            return []
-        except Exception as e:
-            safe_print(f"[-] Failed to initialize session for profile '{profile_name}': {e}. Skipping.")
-            return []
+        safe_print(f"Connecting to AWS Profile: '{profile_name}'" + (f" (alias: {resolved_profile})" if resolved_profile != profile_name else "") + f" [Auth: {auth_method}]...")
 
     # Verify caller identity
-    default_region = session.region_name or "us-east-1"
+    default_region = session.region_name or ("ca-central-1" if "cccs" in profile_name else "us-east-1")
     try:
         sts = session.client("sts", region_name=default_region)
         identity = sts.get_caller_identity()
@@ -868,16 +955,34 @@ def main():
     all_buckets = []
     profile_stats = {}
 
-    if args.current_session or (len(args.profiles) == 1 and args.profiles[0].lower() == "current"):
-        buckets = scan_single_organization("current", args, candidate_roles, is_current_session=True)
-        all_buckets.extend(buckets)
-        profile_stats["current"] = len(buckets)
+    is_current = args.current_session or (len(args.profiles) == 1 and args.profiles[0].lower() == "current")
+
+    if is_current:
+        # Check if the current session actually has valid credentials
+        curr_session, method = get_session_for_profile("current", is_current_session=True)
+        if curr_session:
+            buckets = scan_single_organization("current", args, candidate_roles, is_current_session=True, session=curr_session)
+            all_buckets.extend(buckets)
+            profile_stats["current"] = len(buckets)
+        else:
+            safe_print("\n" + "!" * 85)
+            safe_print("  [NOTICE] '--current-session' was specified, but no default unprofiled AWS credentials")
+            safe_print("           or AWS_PROFILE environment variables were detected in PowerShell.")
+            safe_print(f"  [+] Automatically auto-falling back to audit the 3 Organization profiles:")
+            safe_print(f"      {', '.join(DEFAULT_PROFILES)}...")
+            safe_print("!" * 85 + "\n")
+            for profile in DEFAULT_PROFILES:
+                sess, m = get_session_for_profile(profile, is_current_session=False)
+                buckets = scan_single_organization(profile, args, candidate_roles, is_current_session=False, session=sess)
+                all_buckets.extend(buckets)
+                profile_stats[profile] = len(buckets)
     else:
         for profile in args.profiles:
             if profile.lower() == "current":
                 buckets = scan_single_organization("current", args, candidate_roles, is_current_session=True)
             else:
-                buckets = scan_single_organization(profile, args, candidate_roles, is_current_session=False)
+                sess, m = get_session_for_profile(profile, is_current_session=False)
+                buckets = scan_single_organization(profile, args, candidate_roles, is_current_session=False, session=sess)
             all_buckets.extend(buckets)
             profile_stats[profile] = len(buckets)
 

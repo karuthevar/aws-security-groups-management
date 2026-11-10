@@ -108,6 +108,30 @@ if ($LASTEXITCODE -ne 0) {
     & $PythonExe -m pip install --quiet boto3
 }
 
+# Handle -CurrentSession fallback if no unprofiled credentials exist
+if ($CurrentSession) {
+    $HasEnv = [bool]$env:AWS_ACCESS_KEY_ID -or [bool]$env:AWS_PROFILE
+    $CurrentSessionValid = $HasEnv
+    if (-not $HasEnv) {
+        $PrevEA = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        try {
+            & $PythonExe -c "import boto3; boto3.Session().client('sts').get_caller_identity()" 2>$null | Out-Null
+            $CurrentSessionValid = ($LASTEXITCODE -eq 0)
+        } catch {
+            $CurrentSessionValid = $false
+        } finally {
+            $ErrorActionPreference = $PrevEA
+        }
+    }
+    if (-not $CurrentSessionValid) {
+        Write-Host "`n[NOTICE] -CurrentSession was requested, but no default unprofiled AWS credentials" -ForegroundColor DarkYellow
+        Write-Host "         or AWS_PROFILE environment variables were detected in PowerShell." -ForegroundColor DarkYellow
+        Write-Host "[+] Automatically defaulting to audit the 3 Organization profiles: $($Profiles -join ', ')...`n" -ForegroundColor Cyan
+        $CurrentSession = $false
+    }
+}
+
 # Build arguments array
 $ArgsList = @($PythonScript)
 
