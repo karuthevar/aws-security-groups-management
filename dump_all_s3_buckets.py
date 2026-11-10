@@ -795,7 +795,7 @@ def get_session_for_profile(profile_name, is_current_session=False):
 
     # Tier 2: Bridge credentials via AWS CLI v2 export-credentials
     try:
-        cmd = ["aws", "configure", "export-credentials", "--profile", resolved_profile, "--format", "json"]
+        cmd = ["aws", "configure", "export-credentials", "--profile", resolved_profile, "--format", "process"]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if proc.returncode == 0 and proc.stdout.strip():
             cred_data = json.loads(proc.stdout)
@@ -822,7 +822,7 @@ def get_session_for_profile(profile_name, is_current_session=False):
 
     # Tier 4: Bridge SSO profile via AWS CLI export-credentials
     try:
-        cmd = ["aws", "configure", "export-credentials", "--profile", sso_profile, "--format", "json"]
+        cmd = ["aws", "configure", "export-credentials", "--profile", sso_profile, "--format", "process"]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if proc.returncode == 0 and proc.stdout.strip():
             cred_data = json.loads(proc.stdout)

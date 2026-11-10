@@ -17,6 +17,7 @@ inputs/
 inputs/**
 *.html
 *.json
+*.csv
 *.pdf
 !test/mock_*.json
 !controls/**/*.json
