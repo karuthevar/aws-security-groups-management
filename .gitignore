@@ -13,6 +13,8 @@ reports/
 reports/**
 audit_results/
 audit_results/**
+inputs/
+inputs/**
 *.html
 *.json
 *.pdf
