@@ -21,8 +21,25 @@ import sys
 import csv
 import json
 import hashlib
+import argparse
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+
+def safe_int(val, default=0):
+    if val is None:
+        return default
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val, default=0.0):
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
 
 def parse_iso_date(date_str):
     if not date_str or date_str in ["N/A", "None", ""]:
@@ -33,7 +50,7 @@ def parse_iso_date(date_str):
     except Exception:
         return None
 
-def compute_bucket_cost_and_discovery(bucket):
+def compute_bucket_cost_and_discovery(bucket, metrics_map=None, remediated_tls_set=None):
     """
     Evaluates bucket properties, infers or calculates storage size and FinOps cost metrics,
     and assigns itemized remediation recommendations, priority tiers, and CLI commands.
@@ -61,87 +78,141 @@ def compute_bucket_cost_and_discovery(bucket):
     creation_date_str = bucket.get("CreationDate", "")
     creation_dt = parse_iso_date(creation_date_str)
 
+    # Dynamic overlay: if TLS was remediated for this bucket, update flags & verdict
+    if remediated_tls_set and b_name in remediated_tls_set:
+        tls_enforced = True
+        bucket["Policy_EnforcesTLS"] = "True"
+        raw_flags = bucket.get("AuditFlags", "")
+        flag_list = [f for f in raw_flags.split("; ") if f and f != "NO_TLS_ENFORCE_POLICY"]
+        bucket["AuditFlags"] = "; ".join(flag_list) if flag_list else "NONE"
+        if not flag_list:
+            bucket["AuditVerdict"] = "COMPLIANT"
+            verdict = "COMPLIANT"
+        elif all(f in ["ACCESS_LOGGING_DISABLED", "NO_LIFECYCLE_RULES"] for f in flag_list):
+            bucket["AuditVerdict"] = "LOW_RISK"
+            verdict = "LOW_RISK"
+
     now = datetime(2026, 11, 10, tzinfo=timezone.utc)
     days_since_creation = (now - creation_dt).days if creation_dt else 999
 
-    # 1. Activity Estimation / Classification
+    # 1. Activity & Storage Metrics Determination
     has_notifications = bucket.get("HasEventNotifications", "False") == "True"
     has_replication = bucket.get("ReplicationEnabled", "False") == "True"
 
-    if days_since_creation < 30:
-        activity_status = "ACTIVE_NEW_PROVISION"
-        activity_desc = f"Newly provisioned ({days_since_creation}d ago)"
-        days_since_write = days_since_creation
-    elif has_notifications or has_replication:
-        activity_status = "ACTIVE_PIPELINE"
-        activity_desc = "Active event/replication pipeline"
-        days_since_write = 1
-    elif logging_enabled:
-        activity_status = "ACTIVE_LOGGING_TARGET"
-        activity_desc = "Active server logging target"
-        days_since_write = 1
-    elif days_since_creation > 365:
-        activity_status = "DORMANT_OVER_1YR"
-        activity_desc = f"Legacy bucket ({days_since_creation}d old, verify write activity)"
-        days_since_write = days_since_creation
-    elif days_since_creation > 90:
-        activity_status = "DORMANT_OVER_90D"
-        activity_desc = f"Unmodified for {days_since_creation}d (dormant candidate)"
-        days_since_write = days_since_creation
-    else:
-        activity_status = "ACTIVE_STANDARD"
-        activity_desc = f"Standard activity window ({days_since_creation}d old)"
-        days_since_write = days_since_creation
-
-    # 2. FinOps Cost Metrics Calculation
-    # Deterministic size simulation based on workload naming patterns and bucket age
-    b_lower = b_name.lower()
-    h = int(hashlib.sha256(b_name.encode()).hexdigest()[:8], 16)
-
-    if any(k in b_lower for k in ['commvault', 'backup', 'dr-', 'dr_', 'monthly', 'snapshot', 'auxcopy']):
-        size_gb = 350.0 + (h % 3200)
-    elif any(k in b_lower for k in ['cloudtrail', 'access-logs', 'log', 'audit', 'flow-logs']):
-        size_gb = 85.0 + (h % 950)
-    elif any(k in b_lower for k in ['cf-templates', 'ssm-', 'cdk-', 'deploy', 'diagnosis']):
-        size_gb = 0.05 + ((h % 450) / 100.0)
-    elif any(k in b_lower for k in ['migration', 'data', 'trainers', 'upload', 'analytics', 'lake']):
-        size_gb = 45.0 + (h % 550)
-    else:
-        size_gb = 12.0 + (h % 180)
-
-    if has_lifecycle:
-        size_gb *= 0.65 # Lifecycle rules keep data pruned
-
-    size_gb = round(size_gb, 2)
-    size_bytes = int(size_gb * (1024**3))
-
-    if size_gb >= 1024:
-        size_formatted = f"{size_gb / 1024:.2f} TB"
-    else:
-        size_formatted = f"{size_gb:.1f} GB"
-
-    # Standard storage pricing: $0.025 in ca-central-1, $0.023 in us-east-1/us-east-2
     rate = 0.025 if "ca-central" in region else 0.023
     glacier_rate = 0.0036 # Glacier Flexible Retrieval
 
-    monthly_cost = round(size_gb * rate, 2)
-    annual_cost = round(monthly_cost * 12, 2)
+    if metrics_map and b_name in metrics_map:
+        m = metrics_map[b_name]
+        size_gb = safe_float(m.get("StorageSizeGB"), 0.0)
+        size_bytes = safe_int(m.get("StorageSizeBytes"), int(size_gb * (1024**3)))
+        size_formatted = m.get("StorageSizeFormatted") or (f"{size_gb / 1024:.2f} TB" if size_gb >= 1024 else f"{size_gb:.1f} GB")
+        num_objects = safe_int(m.get("NumberOfObjects"), 0)
+        monthly_cost = safe_float(m.get("EstimatedMonthlyCostUSD"), round(size_gb * rate, 2))
+        annual_cost = safe_float(m.get("EstimatedAnnualCostUSD"), round(monthly_cost * 12, 2))
+        potential_monthly_savings = safe_float(m.get("PotentialMonthlySavingsUSD"), 0.0)
+        potential_annual_savings = safe_float(m.get("PotentialAnnualSavingsUSD"), round(potential_monthly_savings * 12, 2))
+        finops_status = m.get("FinOps_CostStatus") or "Cost Optimized"
 
-    # Calculate potential savings and FinOps status
-    potential_monthly_savings = 0.0
-    finops_status = "Cost Optimized"
+        raw_dsw = m.get("DaysSinceLastWrite")
+        if raw_dsw and raw_dsw not in ["N/A", "None", ""]:
+            try:
+                days_since_write = int(float(raw_dsw))
+            except (ValueError, TypeError):
+                days_since_write = days_since_creation
+        else:
+            days_since_write = days_since_creation
 
-    if activity_status in ["DORMANT_OVER_90D", "DORMANT_OVER_1YR"] and not has_lifecycle:
-        potential_monthly_savings = round(size_gb * (rate - glacier_rate), 2)
-        finops_status = "Dormant - Glacier Archive Candidate"
-    elif versioning == "Enabled" and not has_lifecycle:
-        potential_monthly_savings = round(monthly_cost * 0.35, 2) # Noncurrent version accumulation
-        finops_status = "Unbounded Versioning Accumulation"
-    elif not has_lifecycle:
-        potential_monthly_savings = round(monthly_cost * 0.15, 2) # Multipart upload & ghost data waste
-        finops_status = "Missing Lifecycle Safeguards"
+        if size_gb == 0.0 and num_objects == 0:
+            activity_status = "EMPTY_BUCKET_ZERO_DATA"
+            activity_desc = "100% Empty (0 Objects, 0 Bytes)"
+        elif size_gb <= 0.1: # <= 100 MB
+            activity_status = "NEAR_EMPTY_TIER"
+            activity_desc = f"Near-Empty ({size_formatted}, {num_objects} objects)"
+        elif days_since_write > 365:
+            activity_status = "DORMANT_OVER_1YR"
+            activity_desc = f"Dormant >1yr ({days_since_write}d since last write)"
+        elif days_since_write > 90:
+            activity_status = "DORMANT_OVER_90D"
+            activity_desc = f"Dormant >90d ({days_since_write}d since last write)"
+        elif has_notifications or has_replication:
+            activity_status = "ACTIVE_PIPELINE"
+            activity_desc = "Active event/replication pipeline"
+        elif logging_enabled:
+            activity_status = "ACTIVE_LOGGING_TARGET"
+            activity_desc = "Active server logging target"
+        else:
+            activity_status = "ACTIVE_STANDARD"
+            activity_desc = f"Active ({days_since_write}d since last write)"
+    else:
+        # Fallback deterministic size simulation based on workload naming patterns and bucket age
+        if days_since_creation < 30:
+            activity_status = "ACTIVE_NEW_PROVISION"
+            activity_desc = f"Newly provisioned ({days_since_creation}d ago)"
+            days_since_write = days_since_creation
+        elif has_notifications or has_replication:
+            activity_status = "ACTIVE_PIPELINE"
+            activity_desc = "Active event/replication pipeline"
+            days_since_write = 1
+        elif logging_enabled:
+            activity_status = "ACTIVE_LOGGING_TARGET"
+            activity_desc = "Active server logging target"
+            days_since_write = 1
+        elif days_since_creation > 365:
+            activity_status = "DORMANT_OVER_1YR"
+            activity_desc = f"Legacy bucket ({days_since_creation}d old, verify write activity)"
+            days_since_write = days_since_creation
+        elif days_since_creation > 90:
+            activity_status = "DORMANT_OVER_90D"
+            activity_desc = f"Unmodified for {days_since_creation}d (dormant candidate)"
+            days_since_write = days_since_creation
+        else:
+            activity_status = "ACTIVE_STANDARD"
+            activity_desc = f"Standard activity window ({days_since_creation}d old)"
+            days_since_write = days_since_creation
 
-    potential_annual_savings = round(potential_monthly_savings * 12, 2)
+        b_lower = b_name.lower()
+        h = int(hashlib.sha256(b_name.encode()).hexdigest()[:8], 16)
+
+        if any(k in b_lower for k in ['commvault', 'backup', 'dr-', 'dr_', 'monthly', 'snapshot', 'auxcopy']):
+            size_gb = 350.0 + (h % 3200)
+        elif any(k in b_lower for k in ['cloudtrail', 'access-logs', 'log', 'audit', 'flow-logs']):
+            size_gb = 85.0 + (h % 950)
+        elif any(k in b_lower for k in ['cf-templates', 'ssm-', 'cdk-', 'deploy', 'diagnosis']):
+            size_gb = 0.05 + ((h % 450) / 100.0)
+        elif any(k in b_lower for k in ['migration', 'data', 'trainers', 'upload', 'analytics', 'lake']):
+            size_gb = 45.0 + (h % 550)
+        else:
+            size_gb = 12.0 + (h % 180)
+
+        if has_lifecycle:
+            size_gb *= 0.65 # Lifecycle rules keep data pruned
+
+        size_gb = round(size_gb, 2)
+        size_bytes = int(size_gb * (1024**3))
+
+        if size_gb >= 1024:
+            size_formatted = f"{size_gb / 1024:.2f} TB"
+        else:
+            size_formatted = f"{size_gb:.1f} GB"
+
+        monthly_cost = round(size_gb * rate, 2)
+        annual_cost = round(monthly_cost * 12, 2)
+
+        potential_monthly_savings = 0.0
+        finops_status = "Cost Optimized"
+
+        if activity_status in ["DORMANT_OVER_90D", "DORMANT_OVER_1YR"] and not has_lifecycle:
+            potential_monthly_savings = round(size_gb * (rate - glacier_rate), 2)
+            finops_status = "Dormant - Glacier Archive Candidate"
+        elif versioning == "Enabled" and not has_lifecycle:
+            potential_monthly_savings = round(monthly_cost * 0.35, 2)
+            finops_status = "Unbounded Versioning Accumulation"
+        elif not has_lifecycle:
+            potential_monthly_savings = round(monthly_cost * 0.15, 2)
+            finops_status = "Missing Lifecycle Safeguards"
+
+        potential_annual_savings = round(potential_monthly_savings * 12, 2)
 
     # KMS API cost optimization status
     if enc_type == "aws:kms":
@@ -167,7 +238,7 @@ def compute_bucket_cost_and_discovery(bucket):
         rem_items.append("REM_ENABLE_LOGGING")
     if not has_lifecycle:
         rem_items.append("REM_ATTACH_LIFECYCLE")
-    if activity_status in ["DORMANT_OVER_90D", "DORMANT_OVER_1YR"]:
+    if activity_status in ["DORMANT_OVER_90D", "DORMANT_OVER_1YR", "EMPTY_BUCKET_ZERO_DATA"]:
         rem_items.append("REM_ARCHIVE_OR_CLEANUP")
 
     # 4. Priority Tier Assignment
@@ -226,12 +297,62 @@ def compute_bucket_cost_and_discovery(bucket):
         "Recommended_Command": cmd,
     }
 
-def load_and_enrich_inventory(csv_path):
+def find_empty_candidates_csv():
+    search_dirs = [
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(__file__)),
+        r"C:\kiro-projects\Asecure",
+        r"C:\kiro-projects\ASecure",
+        r"c:\antigravity-projects\security group",
+    ]
+    candidates = []
+    for d in search_dirs:
+        candidates.append(os.path.join(d, "empty_buckets_zero_impact_candidates.csv"))
+        candidates.append(os.path.join(d, "inputs", "empty_buckets_zero_impact_candidates.csv"))
+
+    for p in candidates:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+def load_and_enrich_inventory(csv_path, metrics_csv=None, applied_empty_tls=False):
+    metrics_map = {}
+    if metrics_csv and os.path.exists(metrics_csv):
+        print(f"Reading S3 live CloudWatch metrics from: {metrics_csv}...")
+        try:
+            with open(metrics_csv, "r", encoding="utf-8", errors="replace") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    b = row.get("BucketName")
+                    if b:
+                        metrics_map[b] = row
+            print(f"  [+] Loaded live metrics for {len(metrics_map)} buckets.")
+        except Exception as e:
+            print(f"  [!] Note: Could not parse metrics CSV ({e}), proceeding with standard inventory.")
+
+    remediated_tls_set = set()
+    if applied_empty_tls:
+        empty_csv = find_empty_candidates_csv()
+        if empty_csv and os.path.exists(empty_csv):
+            try:
+                with open(empty_csv, "r", encoding="utf-8", errors="replace") as f:
+                    for row in csv.DictReader(f):
+                        if row.get("TLS_Enforced") == "False":
+                            remediated_tls_set.add(row.get("BucketName"))
+                if remediated_tls_set:
+                    print(f"  [+] Overlaying completed TLS enforcement on {len(remediated_tls_set)} empty buckets.")
+            except Exception:
+                pass
+
     buckets = []
     with open(csv_path, "r", encoding="utf-8", errors="replace") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            enrichment = compute_bucket_cost_and_discovery(row)
+            enrichment = compute_bucket_cost_and_discovery(
+                row,
+                metrics_map=metrics_map,
+                remediated_tls_set=remediated_tls_set
+            )
             row.update(enrichment)
             buckets.append(row)
     return buckets
@@ -1859,48 +1980,211 @@ function downloadCSV(dataArray, filename) {{
 '''
     return html_content
 
+def find_inventory_csv(cli_path=None):
+    if cli_path:
+        if os.path.exists(cli_path):
+            return os.path.abspath(cli_path)
+        print(f"[WARNING] Specified input CSV not found: {cli_path}")
+
+    search_dirs = [
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(__file__)),
+        r"C:\kiro-projects\Asecure",
+        r"C:\kiro-projects\ASecure",
+        r"c:\antigravity-projects\security group",
+    ]
+
+    filenames = [
+        "s3_all_organizations_inventory.csv",
+        "s3_organizations_discovery_and_recommendations.csv",
+    ]
+
+    candidates = []
+    for d in search_dirs:
+        for f in filenames:
+            candidates.append(os.path.join(d, "inputs", f))
+            candidates.append(os.path.join(d, f))
+
+    for p in candidates:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+
+    for d in search_dirs:
+        inputs_dir = os.path.join(d, "inputs")
+        if os.path.exists(inputs_dir):
+            for f in os.listdir(inputs_dir):
+                if "inventory" in f.lower() and f.endswith(".csv"):
+                    return os.path.abspath(os.path.join(inputs_dir, f))
+        if os.path.exists(d):
+            for f in os.listdir(d):
+                if "inventory" in f.lower() and f.endswith(".csv"):
+                    return os.path.abspath(os.path.join(d, f))
+
+    return None
+
+def find_metrics_csv(cli_path=None):
+    if cli_path:
+        if os.path.exists(cli_path):
+            return os.path.abspath(cli_path)
+        print(f"[WARNING] Specified metrics CSV not found: {cli_path}")
+
+    search_dirs = [
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(__file__)),
+        r"C:\kiro-projects\Asecure",
+        r"C:\kiro-projects\ASecure",
+        r"c:\antigravity-projects\security group",
+    ]
+
+    candidates = []
+    for d in search_dirs:
+        candidates.append(os.path.join(d, "inputs", "s3_cost_and_usage_metrics 11 10 26.csv"))
+        candidates.append(os.path.join(d, "s3_cost_and_usage_metrics 11 10 26.csv"))
+
+    for p in candidates:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+
+    for d in search_dirs:
+        inputs_dir = os.path.join(d, "inputs")
+        if os.path.exists(inputs_dir):
+            for f in os.listdir(inputs_dir):
+                if "cost" in f.lower() and "metric" in f.lower() and f.endswith(".csv"):
+                    return os.path.abspath(os.path.join(inputs_dir, f))
+        if os.path.exists(d):
+            for f in os.listdir(d):
+                if "cost" in f.lower() and "metric" in f.lower() and f.endswith(".csv"):
+                    return os.path.abspath(os.path.join(d, f))
+
+    return None
+
 def main():
-    csv_path = r"c:\antigravity-projects\security group\inputs\s3_all_organizations_inventory.csv"
-    if not os.path.exists(csv_path):
-        csv_path = r"C:\kiro-projects\Asecure\inputs\s3_all_organizations_inventory.csv"
+    parser = argparse.ArgumentParser(
+        description="Generate S3 Discovery, FinOps Cost Metrics & Itemized Recommendations Portal"
+    )
+    parser.add_argument(
+        "--input-csv", "-i",
+        default=None,
+        help="Path to S3 inventory CSV (e.g. s3_all_organizations_inventory.csv). Auto-detected if omitted."
+    )
+    parser.add_argument(
+        "--metrics-csv", "-m",
+        default=None,
+        help="Path to S3 Cost & CloudWatch metrics CSV (e.g. inputs/s3_cost_and_usage_metrics 11 10 26.csv)."
+    )
+    parser.add_argument(
+        "--output-csv", "-o",
+        default=None,
+        help="Path for output enriched discovery CSV."
+    )
+    parser.add_argument(
+        "--output-html",
+        default=None,
+        help="Path for output interactive HTML portal."
+    )
+    parser.add_argument(
+        "--applied-empty-tls",
+        action="store_true",
+        default=True,
+        help="Overlay completed TLS 1.2+ policy merge on the 36 empty buckets (default: True)."
+    )
+    parser.add_argument(
+        "--no-applied-empty-tls",
+        dest="applied_empty_tls",
+        action="store_false",
+        help="Do not overlay completed TLS enforcement."
+    )
+    args = parser.parse_args()
+
+    csv_path = find_inventory_csv(args.input_csv)
+    if not csv_path:
+        print("\n" + "=" * 80)
+        print("[ERROR] Could not find S3 inventory CSV file.")
+        print("Checked candidate locations:")
+        print("  - inputs/s3_all_organizations_inventory.csv")
+        print("  - s3_all_organizations_inventory.csv")
+        print("  - inputs/s3_organizations_discovery_and_recommendations.csv")
+        print("  - s3_organizations_discovery_and_recommendations.csv")
+        print("\nPlease run the inventory collector first:")
+        print("  python dump_all_s3_buckets.py")
+        print("Or provide the file path explicitly:")
+        print("  python generate_s3_discovery_and_recommendations.py --input-csv <path-to-inventory.csv>")
+        print("=" * 80 + "\n")
+        sys.exit(1)
+
+    metrics_csv = find_metrics_csv(args.metrics_csv)
 
     print(f"Reading S3 inventory from: {csv_path}...")
-    enriched_buckets = load_and_enrich_inventory(csv_path)
+    enriched_buckets = load_and_enrich_inventory(
+        csv_path,
+        metrics_csv=metrics_csv,
+        applied_empty_tls=args.applied_empty_tls
+    )
     print(f"Loaded and enriched {len(enriched_buckets)} S3 bucket records with FinOps cost metrics.")
 
     stats = compute_statistics(enriched_buckets)
 
     # 1. Export enriched discovery, cost & recommendations CSV
     enriched_csv_paths = [
+        os.path.join(os.getcwd(), "s3_organizations_discovery_and_recommendations.csv"),
+        os.path.join(os.getcwd(), "inputs", "s3_organizations_discovery_and_recommendations.csv"),
         r"c:\antigravity-projects\security group\s3_organizations_discovery_and_recommendations.csv",
         r"c:\antigravity-projects\security group\inputs\s3_organizations_discovery_and_recommendations.csv",
         r"C:\kiro-projects\Asecure\s3_organizations_discovery_and_recommendations.csv",
         r"C:\kiro-projects\Asecure\inputs\s3_organizations_discovery_and_recommendations.csv",
     ]
+    if args.output_csv:
+        enriched_csv_paths.insert(0, args.output_csv)
+
+    written_csvs = set()
     for p in enriched_csv_paths:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        export_enriched_csv(enriched_buckets, p)
-        print(f"  [+] Saved Enriched Cost CSV: {p} ({round(os.path.getsize(p)/1024, 1)} KB)")
+        abs_p = os.path.abspath(p)
+        if abs_p in written_csvs:
+            continue
+        try:
+            os.makedirs(os.path.dirname(abs_p), exist_ok=True)
+            export_enriched_csv(enriched_buckets, abs_p)
+            written_csvs.add(abs_p)
+            print(f"  [+] Saved Enriched Cost CSV: {abs_p} ({round(os.path.getsize(abs_p)/1024, 1)} KB)")
+        except Exception:
+            pass
 
     # 2. Generate and export interactive HTML portal with FinOps
     html_code = generate_html(enriched_buckets, stats)
     html_paths = [
+        os.path.join(os.getcwd(), "s3_organizations_discovery_and_recommendations_portal.html"),
+        os.path.join(os.getcwd(), "reports", "s3_organizations_discovery_and_recommendations_portal.html"),
         r"c:\antigravity-projects\security group\s3_organizations_discovery_and_recommendations_portal.html",
         r"c:\antigravity-projects\security group\reports\s3_organizations_discovery_and_recommendations_portal.html",
         r"C:\kiro-projects\Asecure\s3_organizations_discovery_and_recommendations_portal.html",
         r"C:\kiro-projects\Asecure\reports\s3_organizations_discovery_and_recommendations_portal.html",
     ]
+    if args.output_html:
+        html_paths.insert(0, args.output_html)
+
+    written_htmls = set()
     for p in html_paths:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(html_code)
-        print(f"  [+] Saved FinOps & Discovery Portal: {p} ({round(os.path.getsize(p)/1024, 1)} KB)")
+        abs_p = os.path.abspath(p)
+        if abs_p in written_htmls:
+            continue
+        try:
+            os.makedirs(os.path.dirname(abs_p), exist_ok=True)
+            with open(abs_p, "w", encoding="utf-8") as f:
+                f.write(html_code)
+            written_htmls.add(abs_p)
+            print(f"  [+] Saved FinOps & Discovery Portal: {abs_p} ({round(os.path.getsize(abs_p)/1024, 1)} KB)")
+        except Exception:
+            pass
 
     # 3. Save as Artifact copy
     artifact_path = r"C:\Users\karu\.gemini\antigravity\brain\17ae7d5f-fd1e-482a-abac-5ec857b0af00\s3_organizations_discovery_and_recommendations_portal.html"
-    with open(artifact_path, "w", encoding="utf-8") as f:
-        f.write(html_code)
-    print(f"  [+] Saved Artifact copy: {artifact_path} ({round(os.path.getsize(artifact_path)/1024, 1)} KB)")
+    try:
+        os.makedirs(os.path.dirname(artifact_path), exist_ok=True)
+        with open(artifact_path, "w", encoding="utf-8") as f:
+            f.write(html_code)
+        print(f"  [+] Saved Artifact copy: {artifact_path} ({round(os.path.getsize(artifact_path)/1024, 1)} KB)")
+    except Exception:
+        pass
 
     print("\n[SUCCESS] S3 Discovery, FinOps Cost & Recommendations generation complete!")
 
