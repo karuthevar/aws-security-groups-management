@@ -930,29 +930,53 @@ def scan_single_organization(profile_or_session, args, candidate_roles, is_curre
 def export_csv(records, filepath, headers=None, exclude_keys=None):
     if not records:
         safe_print(f"  [!] No records to write for {filepath}")
-        return
+        return filepath
     if exclude_keys is None:
         exclude_keys = {"AttachedVolumes", "Tags_JSON", "SnapshotTags_JSON"}
     if headers is None:
         headers = [k for k in records[0].keys() if k not in exclude_keys]
 
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
-        writer.writeheader()
-        for row in records:
-            clean_row = {}
-            for k in headers:
-                v = row.get(k, "")
-                if v is None:
-                    clean_row[k] = ""
-                elif isinstance(v, (list, dict)):
-                    clean_row[k] = json.dumps(v)
-                else:
-                    clean_row[k] = v
-            writer.writerow(clean_row)
-    size_kb = round(os.path.getsize(filepath) / 1024, 1)
-    safe_print(f"  [+] Saved CSV: {filepath} ({size_kb} KB, {len(records)} rows)")
+    target_path = filepath
+    try:
+        with open(target_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
+            writer.writeheader()
+            for row in records:
+                clean_row = {}
+                for k in headers:
+                    v = row.get(k, "")
+                    if v is None:
+                        clean_row[k] = ""
+                    elif isinstance(v, (list, dict)):
+                        clean_row[k] = json.dumps(v)
+                    else:
+                        clean_row[k] = v
+                writer.writerow(clean_row)
+    except PermissionError:
+        # File is locked by Excel or another process! Save fallback copy
+        base, ext = os.path.splitext(filepath)
+        target_path = f"{base}_latest{ext}"
+        safe_print(f"  [!] Lock Warning: '{filepath}' is currently locked (open in Microsoft Excel).")
+        safe_print(f"  [>] Writing fallback to: '{target_path}'")
+        with open(target_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
+            writer.writeheader()
+            for row in records:
+                clean_row = {}
+                for k in headers:
+                    v = row.get(k, "")
+                    if v is None:
+                        clean_row[k] = ""
+                    elif isinstance(v, (list, dict)):
+                        clean_row[k] = json.dumps(v)
+                    else:
+                        clean_row[k] = v
+                writer.writerow(clean_row)
+
+    size_kb = round(os.path.getsize(target_path) / 1024, 1)
+    safe_print(f"  [+] Saved CSV: {target_path} ({size_kb} KB, {len(records)} rows)")
+    return target_path
 
 def compute_portal_statistics(all_data):
     snapshots = all_data.get("snapshots", [])
@@ -1796,34 +1820,51 @@ def main():
     safe_print(f"  Unprotected EC2:          {stats['unprotected_instances']} instances have ZERO snapshot backups")
     safe_print("=" * 85)
 
-    # Export Reports
-    safe_print("\nExporting Reports...")
-    export_csv(all_data["snapshots"], args.output_snapshots_csv)
-    export_csv(all_data["orphans_waste"], args.output_orphans_csv)
-    export_csv(all_data["instances"], args.output_ec2_csv)
-    export_csv(all_data["volumes"], args.output_volumes_csv)
-    if args.output_ec2_csv != args.output_ec2_fleet_csv:
-        export_csv(all_data["instances"], args.output_ec2_fleet_csv)
-
-    # Save Master JSON
+    # 1. Save Master JSON FIRST so all collected audit data is safely secured on disk
     os.makedirs(os.path.dirname(os.path.abspath(args.output_json)), exist_ok=True)
-    with open(args.output_json, "w", encoding="utf-8") as f:
-        json.dump(all_data, f, indent=2, default=str)
-    safe_print(f"  [+] Saved Master JSON: {args.output_json} ({round(os.path.getsize(args.output_json)/1024, 1)} KB)")
+    actual_json_path = args.output_json
+    try:
+        with open(actual_json_path, "w", encoding="utf-8") as f:
+            json.dump(all_data, f, indent=2, default=str)
+    except PermissionError:
+        base, ext = os.path.splitext(args.output_json)
+        actual_json_path = f"{base}_latest{ext}"
+        safe_print(f"  [!] Lock Warning: '{args.output_json}' is locked. Saving to '{actual_json_path}'")
+        with open(actual_json_path, "w", encoding="utf-8") as f:
+            json.dump(all_data, f, indent=2, default=str)
+    safe_print(f"  [+] Saved Master JSON: {actual_json_path} ({round(os.path.getsize(actual_json_path)/1024, 1)} KB)")
 
-    # Save HTML Dashboard Portal
-    generate_html_portal(all_data, stats, args.output_html)
+    # 2. Export CSV Reports (each handles Excel file locks gracefully)
+    safe_print("\nExporting Reports...")
+    actual_snap_csv = export_csv(all_data["snapshots"], args.output_snapshots_csv)
+    actual_orphan_csv = export_csv(all_data["orphans_waste"], args.output_orphans_csv)
+    actual_ec2_csv = export_csv(all_data["instances"], args.output_ec2_csv)
+    actual_vol_csv = export_csv(all_data["volumes"], args.output_volumes_csv)
+    actual_fleet_csv = None
+    if args.output_ec2_csv != args.output_ec2_fleet_csv:
+        actual_fleet_csv = export_csv(all_data["instances"], args.output_ec2_fleet_csv)
+
+    # 3. Save HTML Dashboard Portal
+    actual_html_path = args.output_html
+    try:
+        generate_html_portal(all_data, stats, actual_html_path)
+    except PermissionError:
+        base, ext = os.path.splitext(args.output_html)
+        actual_html_path = f"{base}_latest{ext}"
+        safe_print(f"  [!] Lock Warning: '{args.output_html}' is locked. Saving to '{actual_html_path}'")
+        generate_html_portal(all_data, stats, actual_html_path)
 
     # All generated deliverables
     all_output_files = [
-        args.output_snapshots_csv,
-        args.output_orphans_csv,
-        args.output_ec2_csv,
-        args.output_volumes_csv,
-        args.output_ec2_fleet_csv,
-        args.output_json,
-        args.output_html,
+        actual_snap_csv,
+        actual_orphan_csv,
+        actual_ec2_csv,
+        actual_vol_csv,
+        actual_json_path,
+        actual_html_path,
     ]
+    if actual_fleet_csv:
+        all_output_files.append(actual_fleet_csv)
 
     # Sync to C:\kiro-projects\Asecure if distinct from current working directory
     kiro_dir = r"C:\kiro-projects\Asecure"
