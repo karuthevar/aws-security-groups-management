@@ -108,6 +108,17 @@ if ($ExitCode -eq 0) {
     $PortalHtml = Join-Path $ScriptDir "ec2_ebs_snapshots_inventory_portal.html"
     $SnapshotCsv = Join-Path $ScriptDir "snapshots_all_organizations_inventory.csv"
     $WasteCsv = Join-Path $ScriptDir "orphaned_ebs_and_snapshots_waste.csv"
+    $Ec2Csv = Join-Path $ScriptDir "ec2_instances_storage_inventory.csv"
+    $VolCsv = Join-Path $ScriptDir "ebs_volumes_all_organizations_inventory.csv"
+    $JsonDump = Join-Path $ScriptDir "ec2_ebs_snapshots_all_organizations.json"
+
+    Write-Host "`nGenerated Inventory Deliverables:" -ForegroundColor Cyan
+    if (Test-Path $SnapshotCsv) { Write-Host "  [+] Snapshot Lineage CSV:     $SnapshotCsv ($([math]::Round((Get-Item $SnapshotCsv).Length / 1KB, 1)) KB)" -ForegroundColor Green }
+    if (Test-Path $WasteCsv)    { Write-Host "  [+] Orphaned Waste CSV:       $WasteCsv ($([math]::Round((Get-Item $WasteCsv).Length / 1KB, 1)) KB)" -ForegroundColor Green }
+    if (Test-Path $Ec2Csv)      { Write-Host "  [+] EC2 Storage & Backup CSV: $Ec2Csv ($([math]::Round((Get-Item $Ec2Csv).Length / 1KB, 1)) KB)" -ForegroundColor Green }
+    if (Test-Path $VolCsv)      { Write-Host "  [+] EBS Volumes Fleet CSV:    $VolCsv ($([math]::Round((Get-Item $VolCsv).Length / 1KB, 1)) KB)" -ForegroundColor Green }
+    if (Test-Path $PortalHtml)  { Write-Host "  [+] Interactive HTML Portal:  $PortalHtml ($([math]::Round((Get-Item $PortalHtml).Length / 1KB, 1)) KB)" -ForegroundColor Green }
+    if (Test-Path $JsonDump)    { Write-Host "  [+] Master Hierarchical JSON: $JsonDump ($([math]::Round((Get-Item $JsonDump).Length / 1KB, 1)) KB)" -ForegroundColor Green }
 
     if ($OpenPortal -and (Test-Path $PortalHtml)) {
         Write-Host "`n[+] Opening Interactive Portal in browser..." -ForegroundColor Green

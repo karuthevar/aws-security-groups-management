@@ -55,6 +55,7 @@ import sys
 import re
 import csv
 import json
+import shutil
 import argparse
 import subprocess
 from datetime import datetime, timezone
@@ -152,6 +153,16 @@ def parse_args():
         "--output-ec2-csv", "-oe",
         default="ec2_instances_storage_inventory.csv",
         help="Output path for EC2 Storage Hierarchy CSV."
+    )
+    parser.add_argument(
+        "--output-volumes-csv", "-ov",
+        default="ebs_volumes_all_organizations_inventory.csv",
+        help="Output path for EBS Volumes Inventory CSV."
+    )
+    parser.add_argument(
+        "--output-ec2-fleet-csv", "-of",
+        default="ec2_all_organizations_inventory.csv",
+        help="Output path for EC2 Fleet Inventory CSV."
     )
     parser.add_argument(
         "--output-json", "-j",
@@ -916,18 +927,30 @@ def scan_single_organization(profile_or_session, args, candidate_roles, is_curre
     safe_print(f"  [=] Finished Profile '{profile_name}': {len(org_results['snapshots'])} Snapshots, {len(org_results['volumes'])} Volumes, {len(org_results['instances'])} EC2s.")
     return org_results
 
-def export_csv(records, filepath, headers=None):
+def export_csv(records, filepath, headers=None, exclude_keys=None):
     if not records:
         safe_print(f"  [!] No records to write for {filepath}")
         return
+    if exclude_keys is None:
+        exclude_keys = {"AttachedVolumes", "Tags_JSON", "SnapshotTags_JSON"}
     if headers is None:
-        headers = list(records[0].keys())
+        headers = [k for k in records[0].keys() if k not in exclude_keys]
 
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
+    with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(records)
+        for row in records:
+            clean_row = {}
+            for k in headers:
+                v = row.get(k, "")
+                if v is None:
+                    clean_row[k] = ""
+                elif isinstance(v, (list, dict)):
+                    clean_row[k] = json.dumps(v)
+                else:
+                    clean_row[k] = v
+            writer.writerow(clean_row)
     size_kb = round(os.path.getsize(filepath) / 1024, 1)
     safe_print(f"  [+] Saved CSV: {filepath} ({size_kb} KB, {len(records)} rows)")
 
@@ -965,45 +988,56 @@ def compute_portal_statistics(all_data):
 
     # Rollup by Account
     account_map = {}
-    for s in snapshots:
-        acc_id = s.get("AccountId", "")
+
+    def get_or_create_account(acc_id, acc_name, org):
+        if not acc_id:
+            return None
         if acc_id not in account_map:
             account_map[acc_id] = {
                 "AccountId": acc_id,
-                "AccountName": s.get("AccountName", "Unknown"),
-                "Org": s.get("OrganizationProfile", ""),
+                "AccountName": acc_name or "Unknown",
+                "Org": org or "",
                 "SnapshotsCount": 0,
                 "SnapshotsGB": 0,
                 "SnapshotsCost": 0.0,
                 "OrphanedSnapshots": 0,
+                "OrphanedSnapshotsWasteUSD": 0.0,
                 "VolumesCount": 0,
                 "UnattachedVolumes": 0,
                 "UnattachedWasteUSD": 0.0,
                 "EC2Count": 0,
+                "TotalMonthlyWaste": 0.0,
             }
-        account_map[acc_id]["SnapshotsCount"] += 1
-        account_map[acc_id]["SnapshotsGB"] += s.get("SnapshotSizeGB", 0)
-        account_map[acc_id]["SnapshotsCost"] += s.get("SnapshotEstimatedMonthlyCostUSD", 0.0)
-        if s.get("IsOrphan"):
-            account_map[acc_id]["OrphanedSnapshots"] += 1
+        return account_map[acc_id]
+
+    for s in snapshots:
+        acc = get_or_create_account(s.get("AccountId"), s.get("AccountName"), s.get("OrganizationProfile"))
+        if acc:
+            acc["SnapshotsCount"] += 1
+            acc["SnapshotsGB"] += s.get("SnapshotSizeGB", 0)
+            acc["SnapshotsCost"] += s.get("SnapshotEstimatedMonthlyCostUSD", 0.0)
+            if s.get("IsOrphan"):
+                acc["OrphanedSnapshots"] += 1
+                acc["OrphanedSnapshotsWasteUSD"] += s.get("SnapshotEstimatedMonthlyCostUSD", 0.0)
 
     for v in volumes:
-        acc_id = v.get("AccountId", "")
-        if acc_id in account_map:
-            account_map[acc_id]["VolumesCount"] += 1
+        acc = get_or_create_account(v.get("AccountId"), v.get("AccountName"), v.get("OrganizationProfile"))
+        if acc:
+            acc["VolumesCount"] += 1
             if not v.get("IsAttached"):
-                account_map[acc_id]["UnattachedVolumes"] += 1
-                account_map[acc_id]["UnattachedWasteUSD"] += v.get("EstimatedMonthlyCostUSD", 0.0)
+                acc["UnattachedVolumes"] += 1
+                acc["UnattachedWasteUSD"] += v.get("EstimatedMonthlyCostUSD", 0.0)
 
     for i in instances:
-        acc_id = i.get("AccountId", "")
-        if acc_id in account_map:
-            account_map[acc_id]["EC2Count"] += 1
+        acc = get_or_create_account(i.get("AccountId"), i.get("AccountName"), i.get("OrganizationProfile"))
+        if acc:
+            acc["EC2Count"] += 1
 
     for a in account_map.values():
         a["SnapshotsCost"] = round(a["SnapshotsCost"], 2)
         a["UnattachedWasteUSD"] = round(a["UnattachedWasteUSD"], 2)
-        a["TotalMonthlyWaste"] = round(a["UnattachedWasteUSD"] + (a["OrphanedSnapshots"] * 0.05 * 50), 2) # approx estimate
+        a["OrphanedSnapshotsWasteUSD"] = round(a["OrphanedSnapshotsWasteUSD"], 2)
+        a["TotalMonthlyWaste"] = round(a["UnattachedWasteUSD"] + a["OrphanedSnapshotsWasteUSD"], 2)
 
     return {
         "total_snapshots": total_snaps,
@@ -1762,18 +1796,14 @@ def main():
     safe_print(f"  Unprotected EC2:          {stats['unprotected_instances']} instances have ZERO snapshot backups")
     safe_print("=" * 85)
 
-    # Export Reports across current directory and kiro-projects if present
-    output_targets = [
-        # (data_key, filename_arg, default_name)
-        ("snapshots", args.output_snapshots_csv),
-        ("orphans_waste", args.output_orphans_csv),
-        ("instances", args.output_ec2_csv),
-    ]
-
+    # Export Reports
     safe_print("\nExporting Reports...")
     export_csv(all_data["snapshots"], args.output_snapshots_csv)
     export_csv(all_data["orphans_waste"], args.output_orphans_csv)
     export_csv(all_data["instances"], args.output_ec2_csv)
+    export_csv(all_data["volumes"], args.output_volumes_csv)
+    if args.output_ec2_csv != args.output_ec2_fleet_csv:
+        export_csv(all_data["instances"], args.output_ec2_fleet_csv)
 
     # Save Master JSON
     os.makedirs(os.path.dirname(os.path.abspath(args.output_json)), exist_ok=True)
@@ -1784,30 +1814,47 @@ def main():
     # Save HTML Dashboard Portal
     generate_html_portal(all_data, stats, args.output_html)
 
-    # Sync to C:\kiro-projects\Asecure if it exists
+    # All generated deliverables
+    all_output_files = [
+        args.output_snapshots_csv,
+        args.output_orphans_csv,
+        args.output_ec2_csv,
+        args.output_volumes_csv,
+        args.output_ec2_fleet_csv,
+        args.output_json,
+        args.output_html,
+    ]
+
+    # Sync to C:\kiro-projects\Asecure if distinct from current working directory
     kiro_dir = r"C:\kiro-projects\Asecure"
     if os.path.exists(kiro_dir):
-        safe_print(f"\nSyncing reports to execution directory: {kiro_dir}...")
-        for src in [args.output_snapshots_csv, args.output_orphans_csv, args.output_ec2_csv, args.output_json, args.output_html]:
+        for src in all_output_files:
             if os.path.exists(src):
-                dst = os.path.join(kiro_dir, os.path.basename(src))
+                src_abs = os.path.abspath(src)
+                dst_abs = os.path.abspath(os.path.join(kiro_dir, os.path.basename(src)))
+                if src_abs.lower() == dst_abs.lower():
+                    # Source and destination are identical in C:\kiro-projects\ASecure; skip to prevent truncation
+                    continue
                 try:
-                    with open(src, "rb") as sf, open(dst, "wb") as df:
-                        df.write(sf.read())
-                    safe_print(f"  [+] Synced: {dst}")
-                except Exception:
-                    pass
+                    shutil.copy2(src_abs, dst_abs)
+                    safe_print(f"  [+] Synced to kiro-projects: {dst_abs}")
+                except Exception as e:
+                    safe_print(f"  [-] Failed to sync {src} to {dst_abs}: {e}")
 
     # Save copy to Artifact directory if present
     artifact_dir = r"C:\Users\karu\.gemini\antigravity\brain\17ae7d5f-fd1e-482a-abac-5ec857b0af00"
     if os.path.exists(artifact_dir):
-        art_html = os.path.join(artifact_dir, "ec2_ebs_snapshots_inventory_portal.html")
-        try:
-            with open(args.output_html, "rb") as sf, open(art_html, "wb") as df:
-                df.write(sf.read())
-            safe_print(f"  [+] Saved Artifact Dashboard: {art_html}")
-        except Exception:
-            pass
+        for src in [args.output_html, args.output_orphans_csv, args.output_snapshots_csv]:
+            if os.path.exists(src):
+                src_abs = os.path.abspath(src)
+                dst_abs = os.path.abspath(os.path.join(artifact_dir, os.path.basename(src)))
+                if src_abs.lower() == dst_abs.lower():
+                    continue
+                try:
+                    shutil.copy2(src_abs, dst_abs)
+                    safe_print(f"  [+] Saved Artifact: {dst_abs}")
+                except Exception as e:
+                    pass
 
     safe_print("\n[SUCCESS] EC2, EBS Volumes & Snapshots Lineage Audit complete!")
 
